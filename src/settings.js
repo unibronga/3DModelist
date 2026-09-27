@@ -236,7 +236,14 @@ export async function openSettings(focus) {
       el('div', { class: 'sheet-body' }, secUi, secWs, secClaude, secFal, secBl),
       el('div', { class: 'sheet-foot' },
         el('span', { class: 'muted' }, t('settings.foot', { v: hs.version, home: st.home })),
-        el('button', { class: 'btn primary', onclick: act(async () => { await save(); }) }, t('common.save')))));
+        // «Сохранить» — сохранить и закрыть (просьба владельца 27.09).
+        el('button', {
+          class: 'btn primary',
+          onclick: async (e) => {
+            e.currentTarget.disabled = true;
+            try { await save(); close(); } catch (err) { toast(errText(err), true); e.currentTarget.disabled = false; }
+          },
+        }, t('common.save')))));
   }
 
   function close() {

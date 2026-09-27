@@ -675,9 +675,12 @@ function genCard(tk) {
         },
       }, t(st === 'done' ? 'gen.again' : 'gen.run', { price: money(price) })));
     draw();
-    // Раскрытый блок остаётся раскрытым: панель перерисовывается при каждом изменении задачи.
-    if (st === 'done') card.append(el('details', { open: S.genOpen, ontoggle: (e) => { S.genOpen = e.currentTarget.open; } }, el('summary', { class: 'muted' }, t('gen.againSummary')), box));
-    else card.append(box);
+    // После готовой генерации — настоящая кнопка «Сгенерировать ещё вариант»
+    // (мелкую раскрывашку владелец не заметил). Лист на входе — раскрыто сразу,
+    // чтобы предупреждение и «Разрезать на виды» были видны без поиска.
+    if (st === 'done' && !S.genOpen && sheetN < 2) {
+      card.append(el('button', { class: 'btn wide', onclick: () => { S.genOpen = true; renderTaskPanel(); } }, t('gen.againSummary')));
+    } else card.append(box);
   }
   return card;
 }

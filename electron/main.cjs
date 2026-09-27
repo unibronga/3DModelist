@@ -39,6 +39,9 @@ function createWindow() {
     minHeight: 680,
     title: '3DModelist',
     backgroundColor: '#eeeeec',        // цвет фона страницы: окно не мигает белым
+    // Проверки (снимок, самопроверка) — в невидимом окне: не всплывают у человека на экране.
+    show: !(process.env.MODELIST_SCREENSHOT || process.env.MODELIST_SELFTEST),
+    paintWhenInitiallyHidden: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -56,7 +59,8 @@ function createWindow() {
       await new Promise((r) => setTimeout(r, Number(process.env.MODELIST_SCREENSHOT_DELAY || 4000)));
       // Действие перед снимком (раскрыть меню, открыть окно) — для проверок в самом приложении.
       if (process.env.MODELIST_SCREENSHOT_JS) {
-        await win.webContents.executeJavaScript(process.env.MODELIST_SCREENSHOT_JS).catch((e) => console.error('[3DModelist] действие:', e.message));
+        const res = await win.webContents.executeJavaScript(process.env.MODELIST_SCREENSHOT_JS).catch((e) => console.error('[3DModelist] действие:', e.message));
+        if (res !== undefined) console.log('[3DModelist] действие →', JSON.stringify(res));
         await new Promise((r) => setTimeout(r, 800));
       }
       const img = await win.webContents.capturePage();

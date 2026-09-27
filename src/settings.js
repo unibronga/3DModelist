@@ -204,6 +204,7 @@ export async function openSettings(focus) {
           el('input', { class: 'input', type: 'password', placeholder: st.fal.key.set ? t('key.keep') : 'fal key', autocomplete: 'off', oninput: (e) => { draft.fal.key = e.target.value; } }),
           st.fal.key.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.fal = true; await save(); }) }, t('key.clear')))),
       fr && (fr.ok ? line(true, t('fal.ok')) : line(false, errText(fr))),
+      el('p', { class: 'muted' }, t('fal.balanceHint')),
       el('button', { class: 'btn', onclick: act(async () => { await save(true); results.fal = await api('/check/fal', { method: 'POST' }); }) }, t('common.saveCheck')));
 
     // ── Blender ──

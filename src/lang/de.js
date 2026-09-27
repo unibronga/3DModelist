@@ -401,5 +401,12 @@ export default {
   "about.builtWith": "Gebaut mit",
   "about.licenseNote": "Freie Open-Source-Software: kostenlos nutzen, ändern und weitergeben, mit Nennung des Autors.",
   "agents.afterGen": "Nach dem Generator vollendet der Agent das Modell: Maßstab in Metern, auf den Boden, Aufräumen, Dateiübergabe.",
-  "agents.build": "Der Agent baut das Modell nach der Referenz per Skript in Blender."
+  "agents.build": "Der Agent baut das Modell nach der Referenz per Skript in Blender.",
+  "acct.api": "Anthropic API",
+  "acct.notLogged": "Claude: nicht angemeldet",
+  "acct.falNoKey": "fal.ai nicht verbunden",
+  "acct.falNoScope": "fal.ai: Guthaben verborgen",
+  "acct.falBalance": "fal.ai: noch {sum}",
+  "acct.falSpent": "ausgegeben {sum}",
+  "fal.balanceHint": "Um das Restguthaben zu sehen, braucht der fal-Schlüssel den Bereich ADMIN (fal.ai/dashboard/keys → neuer Schlüssel, Scope: ADMIN)."
 };

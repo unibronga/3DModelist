@@ -401,5 +401,12 @@ export default {
   "about.builtWith": "Hecho con",
   "about.licenseNote": "Software libre de código abierto: úsalo, modifícalo y compártelo gratis manteniendo la mención del autor.",
   "agents.afterGen": "Tras el generador, el agente termina el modelo: escala en metros, apoyado en el suelo, limpieza y entrega de archivos.",
-  "agents.build": "El agente construye el modelo a partir de la referencia por script en Blender."
+  "agents.build": "El agente construye el modelo a partir de la referencia por script en Blender.",
+  "acct.api": "API de Anthropic",
+  "acct.notLogged": "Claude: sin iniciar sesión",
+  "acct.falNoKey": "fal.ai sin conectar",
+  "acct.falNoScope": "fal.ai: saldo oculto",
+  "acct.falBalance": "fal.ai: quedan {sum}",
+  "acct.falSpent": "gastado {sum}",
+  "fal.balanceHint": "Para ver el saldo restante, la clave de fal necesita el permiso ADMIN (fal.ai/dashboard/keys → nueva clave, Scope: ADMIN)."
 };

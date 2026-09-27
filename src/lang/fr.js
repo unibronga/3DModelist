@@ -402,5 +402,12 @@ export default {
   "about.builtWith": "Construit avec",
   "about.licenseNote": "Logiciel libre et open source : utilisez, modifiez et partagez-le gratuitement en conservant la mention de l'auteur.",
   "agents.afterGen": "Après le générateur, l'agent finit le modèle : échelle en mètres, posé au sol, nettoyage, livraison des fichiers.",
-  "agents.build": "L'agent construit le modèle d'après la référence par script dans Blender."
+  "agents.build": "L'agent construit le modèle d'après la référence par script dans Blender.",
+  "acct.api": "API Anthropic",
+  "acct.notLogged": "Claude : non connecté",
+  "acct.falNoKey": "fal.ai non connecté",
+  "acct.falNoScope": "fal.ai : solde masqué",
+  "acct.falBalance": "fal.ai : reste {sum}",
+  "acct.falSpent": "dépensé {sum}",
+  "fal.balanceHint": "Pour voir le solde restant, la clé fal doit avoir le droit ADMIN (fal.ai/dashboard/keys → nouvelle clé, Scope : ADMIN)."
 };

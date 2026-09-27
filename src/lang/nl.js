@@ -402,5 +402,12 @@ export default {
   "about.builtWith": "Gebouwd met",
   "about.licenseNote": "Vrije opensourcesoftware: gratis gebruiken, aanpassen en delen, met vermelding van de auteur.",
   "agents.afterGen": "Na de generator maakt de agent het model af: schaal in meters, op de grond, opschonen, bestanden opleveren.",
-  "agents.build": "De agent bouwt het model op basis van de referentie via script in Blender."
+  "agents.build": "De agent bouwt het model op basis van de referentie via script in Blender.",
+  "acct.api": "Anthropic API",
+  "acct.notLogged": "Claude: niet ingelogd",
+  "acct.falNoKey": "fal.ai niet gekoppeld",
+  "acct.falNoScope": "fal.ai: saldo verborgen",
+  "acct.falBalance": "fal.ai: nog {sum}",
+  "acct.falSpent": "uitgegeven {sum}",
+  "fal.balanceHint": "Om het resterende saldo te zien, heeft de fal-sleutel het ADMIN-bereik nodig (fal.ai/dashboard/keys → nieuwe sleutel, Scope: ADMIN)."
 };

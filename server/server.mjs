@@ -22,6 +22,7 @@ import { library, taskMedia, refsTree } from './library.mjs';
 import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
+import { account, dropAccountCache } from './account.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(HERE, '..', 'dist');
@@ -177,6 +178,7 @@ async function api(req, res, url) {
     });
   }
   if (parts[1] === 'health' && m === 'GET') return send(res, 200, await health());
+  if (parts[1] === 'account' && m === 'GET') return send(res, 200, await account());
 
   // ── настройки ──
   if (parts[1] === 'settings') {
@@ -184,6 +186,7 @@ async function api(req, res, url) {
     if (m === 'PATCH') {
       if (busyTask()) return send(res, 409, errBody(new UserError('settingsBusy')));
       settings.update(await readBody(req));
+      dropAccountCache();                          // сменили вход или ключ — плашку пересчитать
       return send(res, 200, settings.publicView());
     }
   }

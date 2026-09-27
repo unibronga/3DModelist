@@ -871,6 +871,37 @@ $('#new-task').addEventListener('click', () => selectTask(null));
 $('#open-settings').addEventListener('click', () => openSettings());
 $('#blender').addEventListener('click', () => { if (!$('#blender').classList.contains('on')) openSettings('blender'); });
 
+// Плашка внизу слева: кто в Claude и сколько денег на fal.
+let acct = null;
+async function refreshAccount() {
+  acct = await api('/account').catch(() => acct);
+  renderAccount();
+}
+function renderAccount() {
+  if (!acct) return;
+  const c = acct.claude;
+  let name;
+  let plan = '';
+  if (c.mode === 'api') { name = t('acct.api'); plan = c.tail ? '…' + c.tail : ''; }
+  else if (!c.loggedIn) name = t('acct.notLogged');
+  else { name = c.name || 'Claude'; plan = c.plan ? c.plan[0].toUpperCase() + c.plan.slice(1) : ''; }
+  $('#acct-name').textContent = name;
+  $('#acct-plan').textContent = plan ? '· ' + plan : '';
+  $('#acct-avatar').textContent = (name.match(/\p{L}/gu) || ['?']).slice(0, 2).join('').toUpperCase();
+  $('#acct-name').classList.toggle('warn', c.mode === 'subscription' && !c.loggedIn);
+
+  const f = acct.fal;
+  const line = $('#acct-fal');
+  const spent = f.spent ? ' · ' + t('acct.falSpent', { sum: money(f.spent) }) : '';
+  line.className = 'acct-fal' + (f.key && f.scope !== false ? '' : ' dim');
+  line.textContent = !f.key ? t('acct.falNoKey')
+    : f.scope === false ? t('acct.falNoScope') + spent
+      : f.balance != null ? t('acct.falBalance', { sum: money(f.balance) }) + spent
+        : 'fal.ai' + spent;
+  line.title = f.scope === false ? t('fal.balanceHint') : '';
+}
+$('#acct-fal').addEventListener('click', () => openSettings('fal'));
+
 function renderHealth() {
   const todo = blockers();
   const b = $('#open-settings');
@@ -887,6 +918,7 @@ function renderAll() {
   renderLibrary();
   renderBlender();
   renderModelInfo();
+  renderAccount();
   renderPanel();
   renderDock();
   renderProcess();
@@ -895,6 +927,7 @@ onLangChange(renderAll);
 
 // После настроек: другая папка — другие задачи и модели; новый каталог моделей.
 async function afterSettings() {
+  refreshAccount();
   await refreshHealth().catch(() => {});
   S.meta = await api('/meta').catch(() => S.meta);
   renderHealth();
@@ -1048,6 +1081,8 @@ async function boot() {
   const deep = new URLSearchParams(location.hash.slice(1)).get('model');
   if (deep) showModel(deep, { manual: true });
 
+  refreshAccount();
+  setInterval(refreshAccount, 60000);
   setInterval(() => { refreshTask().catch(() => {}); }, 1500);
   setInterval(() => { refreshTasks().catch(() => {}); }, 3000);
   setInterval(() => { refreshLibrary().catch(() => {}); renderBlender(); refreshHealth().then(renderHealth, () => {}); }, 8000);

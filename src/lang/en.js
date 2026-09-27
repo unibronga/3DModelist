@@ -401,5 +401,12 @@ export default {
   "about.builtWith": "Built with",
   "about.licenseNote": "Free, open-source software: use, change and share it at no cost, keeping the author's credit.",
   "agents.afterGen": "After the generator, the agent finishes the model: real-world scale, on the floor, cleanup, file delivery.",
-  "agents.build": "The agent builds the model from the reference by script in Blender."
+  "agents.build": "The agent builds the model from the reference by script in Blender.",
+  "acct.api": "Anthropic API",
+  "acct.notLogged": "Claude: not signed in",
+  "acct.falNoKey": "fal.ai not connected",
+  "acct.falNoScope": "fal.ai: balance hidden",
+  "acct.falBalance": "fal.ai: {sum} left",
+  "acct.falSpent": "spent {sum}",
+  "fal.balanceHint": "To see the remaining balance, the fal key needs the ADMIN scope (fal.ai/dashboard/keys → new key, Scope: ADMIN)."
 };

@@ -401,5 +401,12 @@ export default {
   "about.builtWith": "Побудовано на",
   "about.licenseNote": "Вільна програма з відкритим кодом: користуватися, змінювати й поширювати можна безкоштовно, зберігаючи згадку автора.",
   "agents.afterGen": "Після генератора агент доводить модель: масштаб у метрах, посадка на підлогу, чистка, видача файлів.",
-  "agents.build": "Агент будує модель за референсом скриптом у Blender."
+  "agents.build": "Агент будує модель за референсом скриптом у Blender.",
+  "acct.api": "Anthropic API",
+  "acct.notLogged": "Claude: вхід не виконано",
+  "acct.falNoKey": "fal.ai не підключено",
+  "acct.falNoScope": "fal.ai: залишок приховано",
+  "acct.falBalance": "fal.ai: залишилось {sum}",
+  "acct.falSpent": "витрачено {sum}",
+  "fal.balanceHint": "Щоб бачити залишок грошей, потрібен ключ fal із правом ADMIN (fal.ai/dashboard/keys → новий ключ, Scope: ADMIN)."
 };

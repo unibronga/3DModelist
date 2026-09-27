@@ -505,5 +505,12 @@ export default {
   "dl.obj.hint": "universal, zip with colors (.mtl)",
   "done.refs": "References",
   "done.hint": "The model is done. To change something, press “Reopen” under the model.",
-  "err.exportFail": "Couldn't save in this format: {msg}"
+  "err.exportFail": "Couldn't save in this format: {msg}",
+  "who.critic": "Reviewer",
+  "who.helper": "Helper",
+  "proc.agent.total": "How long the whole turn has run",
+  "proc.agent.quiet": "Last action {time} ago",
+  "proc.agent.stalled": "No new actions for {time} — longer than usual. The agent may be stuck: restart the turn, it will continue where it stopped.",
+  "proc.agent.restart": "Restart",
+  "quick.pin": "Mark on the model"
 };

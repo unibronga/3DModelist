@@ -505,5 +505,12 @@ export default {
   "dl.obj.hint": "universell, ZIP mit Farben (.mtl)",
   "done.refs": "Referenzen",
   "done.hint": "Das Modell ist fertig. Für Änderungen: „Wieder öffnen“ unter dem Modell.",
-  "err.exportFail": "In diesem Format ließ sich nicht speichern: {msg}"
+  "err.exportFail": "In diesem Format ließ sich nicht speichern: {msg}",
+  "who.critic": "Prüfer",
+  "who.helper": "Helfer",
+  "proc.agent.total": "Wie lange der ganze Zug schon läuft",
+  "proc.agent.quiet": "Letzte Aktion vor {time}",
+  "proc.agent.stalled": "Seit {time} keine neuen Aktionen – länger als üblich. Der Agent hängt vielleicht: Zug neu starten, er macht an derselben Stelle weiter.",
+  "proc.agent.restart": "Neu starten",
+  "quick.pin": "Am Modell markieren"
 };

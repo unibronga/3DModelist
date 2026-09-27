@@ -506,5 +506,12 @@ export default {
   "dl.obj.hint": "universeel, zip met kleuren (.mtl)",
   "done.refs": "Referenties",
   "done.hint": "Het model is klaar. Iets aanpassen? Kies „Heropenen” onder het model.",
-  "err.exportFail": "Opslaan in dit formaat lukte niet: {msg}"
+  "err.exportFail": "Opslaan in dit formaat lukte niet: {msg}",
+  "who.critic": "Keurder",
+  "who.helper": "Helper",
+  "proc.agent.total": "Hoe lang de hele beurt al loopt",
+  "proc.agent.quiet": "Laatste actie {time} geleden",
+  "proc.agent.stalled": "Al {time} geen nieuwe acties — langer dan normaal. De agent hangt misschien: herstart de beurt, hij gaat verder waar hij was.",
+  "proc.agent.restart": "Herstarten",
+  "quick.pin": "Markeren op het model"
 };

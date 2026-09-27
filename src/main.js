@@ -107,7 +107,11 @@ viewer.setScale(getScale());
 // Метки на модели: уходят агенту со следующим сообщением.
 const pins = new Pins(viewer, $('#viewport'), {
   context: () => ({ version: S.shownVersion, model: S.shown }),
-  onChange: () => { $('#pin').classList.toggle('on', pins.mode); renderPinsList(); },
+  onChange: () => {
+    $('#pin').classList.toggle('on', pins.mode);
+    document.querySelector('.pin-quick')?.classList.toggle('on', pins.mode);
+    renderPinsList();
+  },
 });
 function togglePinMode(on = !pins.mode) { pins.setMode(on); }
 $('#pin').addEventListener('click', () => togglePinMode());
@@ -397,16 +401,41 @@ function renderLibrary() {
   box.replaceChildren(...(S.library.length ? S.library.map((m) => {
     const main = m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0];
     const active = m.files.some((f) => f.path === S.shown);
-    return el('button', {
-      class: 'item' + (active ? ' sel' : ''),
-      title: m.files.map((f) => f.path).join('\n'),
-      onclick: () => showModel(main.path, { manual: true }),
-    },
-    el('div', { class: 'thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '' }),
-    el('div', { class: 'body' },
-      el('div', { class: 't' }, m.name),
-      el('div', { class: 's' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : ''))));
+    return el('div', { class: 'item-wrap' },
+      el('button', {
+        class: 'item' + (active ? ' sel' : ''),
+        title: m.files.map((f) => f.path).join('\n'),
+        onclick: () => showModel(main.path, { manual: true }),
+      },
+      el('div', { class: 'thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '' }),
+      el('div', { class: 'body' },
+        el('div', { class: 't' }, m.name),
+        el('div', { class: 's' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')))),
+      el('button', { class: 'item-del', title: t('lib.trash'), onclick: () => trashLibraryModel(m) }, trashIcon()));
   }) : [el('div', { class: 'none' }, t('side.noModels'))]));
+}
+
+// Готовую модель — в Корзину: файлы out/, .blend и кадры; скрипт и референсы остаются.
+async function trashLibraryModel(m, after = () => {}) {
+  if (!confirm(t('lib.trash.confirm', { name: m.name }))) return;
+  try {
+    await api(`/library/${encodeURIComponent(m.name)}/trash`, { method: 'POST' });
+    if (S.shown && S.shown.startsWith(`out/${m.name}/`)) clearViewer();
+    toast(t('lib.trashed', { name: m.name }));
+    await refreshLibrary();
+    after();
+  } catch (e) { toast(errText(e), true); }
+}
+
+// Пустое окно: у новой задачи модели ещё нет — чужую не показываем.
+function clearViewer() {
+  viewer.clear();
+  S.shown = null;
+  S.shownVersion = null;
+  $('#empty').hidden = false;
+  renderModelInfo();
+  renderModelBar();
+  tools.renderHistory();
 }
 
 async function renderBlender() {
@@ -743,24 +772,51 @@ function renderProcess() {
     return;
   }
 
-  // Ход агента: последнее действие и время хода — без внутренних этапов.
+  // Ход агента: что делается сейчас и сколько идёт это действие. Действие
+  // тянется дольше обычного — предупреждаем и даём «Перезапустить»: стоп и
+  // сразу «Продолжай» — агент продолжит с того же места (та же сессия).
   let action = '';
+  let lastT = tk.turn_started_at || now;
   for (let i = S.events.length - 1; i >= 0; i--) {
     const ev = S.events[i];
+    if (i === S.events.length - 1) lastT = Math.max(lastT, ev.t);
     if (ev.kind === 'tool') { action = toolText(ev); break; }
     if (ev.kind === 'text') { action = ev.text.split('\n')[0].slice(0, 120); break; }
     if (ev.kind === 'user' || ev.key === 'ev.agentStarted') break;
   }
   const since = tk.turn_started_at || now;
+  const quiet = now - lastT;                       // сколько нет новых действий
+  const stalled = quiet > 600;
   box.replaceChildren(
     el('div', { class: 'proc-head' },
       el('span', { class: 'spinner' }),
       el('div', {},
         el('div', { class: 'proc-title' }, t('proc.agent.title')),
         el('div', { class: 'proc-sub' }, action ? t('proc.agent.action', { action }) : t('proc.agent.starting'))),
-      el('div', { class: 'proc-time' }, clock(now - since))),
+      el('div', { class: 'proc-time', title: t('proc.agent.total') }, clock(now - since))),
     el('div', { class: 'bar indet' }, el('div', { class: 'bar-fill' })),
-    el('div', { class: 'proc-note' }, t('proc.agent.note')));
+    el('div', { class: 'proc-note' + (stalled ? ' warn' : '') }, stalled
+      ? t('proc.agent.stalled', { time: clock(quiet) })
+      : t('proc.agent.quiet', { time: clock(quiet) })),
+    stalled && el('div', { class: 'row' },
+      el('button', { class: 'btn primary', onclick: restartTurn }, t('proc.agent.restart')),
+      el('button', { class: 'btn ghost', onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(() => refreshTask()) }, t('chat.stop'))));
+}
+
+// «Перезапустить»: остановить ход и, как только он погас, отправить «Продолжай».
+async function restartTurn() {
+  const id = S.task?.id;
+  if (!id) return;
+  try {
+    await api(`/tasks/${id}/stop`, { method: 'POST' });
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 1000));
+      const tk = await api(`/tasks/${id}`);
+      if (!tk.running) break;
+    }
+    await api(`/tasks/${id}/agent`, { method: 'POST', body: { message: t('quick.go.msg') } });
+    await refreshTask();
+  } catch (e) { toast(errText(e), true); }
 }
 setInterval(() => { try { renderProcess(); } catch { /* до загрузки */ } }, 1000);
 
@@ -844,7 +900,9 @@ function renderTaskPanel() {
     el('div', { class: 'pins-list', id: 'pins-list', hidden: true }),
     !running && started && el('div', { class: 'quick' },
       el('button', { class: 'btn', onclick: () => send(t('quick.ok.msg')) }, t('quick.ok')),
-      el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go'))),
+      el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go')),
+      // Точечная правка — там же, где пишут правки: метка на модели + слова.
+      el('button', { class: 'btn pin-quick' + (pins.mode ? ' on' : ''), title: t('view.pin.hint'), onclick: () => togglePinMode() }, '📍 ' + t('quick.pin'))),
     !running && ta,
     !running && (started
       ? el('button', { class: 'btn primary', onclick: () => send() }, t('chat.send'))
@@ -926,7 +984,10 @@ function genCard(tk) {
 
 // Строка события: ключ — перевод студии, text — как есть (агент, человек, Claude).
 const evText = (ev) => (ev.key ? t(ev.key, ev.params) : ev.text || '');
-const toolText = (ev) => (ev.verb ? (ev.verb === 'bash' || ev.verb === 'other' ? ev.arg : t('tool.' + ev.verb, { arg: ev.arg })) : ev.text || '');
+const toolText = (ev) => {
+  const txt = ev.verb ? (ev.verb === 'bash' || ev.verb === 'other' ? ev.arg : t('tool.' + ev.verb, { arg: ev.arg })) : ev.text || '';
+  return ev.sub ? t('who.' + (ev.sub === 'critic' ? 'critic' : 'helper')) + ': ' + txt : txt;
+};
 
 // Лента: подряд идущие действия агента сворачиваются в одну строку.
 function renderFeed(force = false) {
@@ -1026,6 +1087,7 @@ async function selectTask(id) {
   renderTasks();
   if (!id) {
     tools.toggle('ref', false);
+    clearViewer();
     renderPanel();
     renderDock();
     renderProcess();
@@ -1071,6 +1133,7 @@ async function refreshTask(first = false) {
     if (lastVer && (!newest || lastVer.t >= newest.mtime)) {
       if (lastVer.glb !== S.shown) showModel(lastVer.glb, { version: lastVer.n });
     } else if (newest && newest.path !== S.shown) showModel(newest.path);
+    else if (first && !lastVer && !newest && S.shown) clearViewer();   // у задачи ещё нет модели
   }
 }
 
@@ -1103,19 +1166,7 @@ function openLibrary() {
       el('div', { class: 'lib-actions' },
         el('button', { class: 'btn primary', onclick: () => { showModel(mainFile(m).path, { manual: true }); close(); } }, t('lib.open')),
         host?.openPath && el('button', { class: 'btn ghost', onclick: () => reveal(`out/${m.name}`) }, t('lib.reveal')),
-        el('button', {
-          class: 'btn ghost danger',
-          onclick: async () => {
-            if (!confirm(t('lib.trash.confirm', { name: m.name }))) return;
-            try {
-              await api(`/library/${encodeURIComponent(m.name)}/trash`, { method: 'POST' });
-              if (S.shown && S.shown.startsWith(`out/${m.name}/`)) { viewer.clear(); S.shown = null; $('#empty').hidden = false; }
-              toast(t('lib.trashed', { name: m.name }));
-              await refreshLibrary();
-              draw();
-            } catch (e) { toast(errText(e), true); }
-          },
-        }, t('lib.trash')))));
+        el('button', { class: 'btn ghost danger', onclick: () => trashLibraryModel(m, draw) }, t('lib.trash')))));
     back.replaceChildren(el('div', { class: 'sheet wide' },
       el('div', { class: 'sheet-head' },
         el('div', {}, el('div', { class: 'panel-title' }, t('side.library')),

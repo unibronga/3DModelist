@@ -505,5 +505,12 @@ export default {
   "dl.obj.hint": "universal, zip con colores (.mtl)",
   "done.refs": "Referencias",
   "done.hint": "El modelo está terminado. Para cambiar algo: «Reabrir» debajo del modelo.",
-  "err.exportFail": "No se pudo guardar en este formato: {msg}"
+  "err.exportFail": "No se pudo guardar en este formato: {msg}",
+  "who.critic": "Revisor",
+  "who.helper": "Ayudante",
+  "proc.agent.total": "Cuánto dura todo el turno",
+  "proc.agent.quiet": "Última acción hace {time}",
+  "proc.agent.stalled": "Sin acciones nuevas desde hace {time}, más de lo normal. El agente puede estar atascado: reinicia el turno y seguirá donde se quedó.",
+  "proc.agent.restart": "Reiniciar",
+  "quick.pin": "Marcar en el modelo"
 };

@@ -506,5 +506,12 @@ export default {
   "dl.obj.hint": "universel, zip avec couleurs (.mtl)",
   "done.refs": "Références",
   "done.hint": "Le modèle est terminé. Pour le modifier : « Rouvrir » sous le modèle.",
-  "err.exportFail": "Impossible d’enregistrer dans ce format : {msg}"
+  "err.exportFail": "Impossible d’enregistrer dans ce format : {msg}",
+  "who.critic": "Relecteur",
+  "who.helper": "Assistant",
+  "proc.agent.total": "Durée totale du tour",
+  "proc.agent.quiet": "Dernière action il y a {time}",
+  "proc.agent.stalled": "Aucune nouvelle action depuis {time} — plus que d’habitude. L’agent est peut-être bloqué : relancez le tour, il reprendra là où il s’est arrêté.",
+  "proc.agent.restart": "Relancer",
+  "quick.pin": "Marquer sur le modèle"
 };

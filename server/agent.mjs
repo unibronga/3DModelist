@@ -24,6 +24,7 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 const running = new Map();          // id задачи → процесс
 const scriptRuns = new Map();       // id вызова Bash → скрипт сцены: после него — снимок модели
+const helpers = new Map();          // id вызова Agent → кто это: critic (приёмщик) или helper
 export const busyTask = () => [...running.keys()][0] || null;
 
 // Окружение процесса claude — только из белого списка. Студию могут поднять
@@ -214,10 +215,21 @@ function handle(id, m) {
     });
     return;
   }
+  // Помощник агента (приёмщик blender-critic и др.) работает внутри одного
+  // вызова Agent: его действия раньше не показывались, и долгая приёмка
+  // выглядела зависанием. Теперь они идут в ленту с пометкой, кто это.
+  if (m.type === 'assistant' && m.parent_tool_use_id) {
+    const who = helpers.get(m.parent_tool_use_id) || 'helper';
+    for (const b of m.message?.content || []) {
+      if (b.type === 'tool_use') addEvent(id, { kind: 'tool', name: b.name, sub: who, ...toolInfo(b.name, b.input) });
+    }
+    return;
+  }
   if (m.type === 'assistant' && !m.parent_tool_use_id) {
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text.trim()) addEvent(id, { kind: 'text', text: b.text });
       if (b.type === 'tool_use') {
+        if (b.name === 'Agent' || b.name === 'Task') helpers.set(b.id, /critic/i.test(b.input?.subagent_type || '') ? 'critic' : 'helper');
         addEvent(id, { kind: 'tool', name: b.name, ...toolInfo(b.name, b.input) });
         const script = b.name === 'Bash' && sceneScript(b.input?.command);
         if (script) scriptRuns.set(b.id, script);

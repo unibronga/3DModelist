@@ -4,10 +4,12 @@
 import { Viewer } from './viewer.js';
 import { $, el, esc, fileUrl, base, money, api, toast, segment, errText } from './ui.js';
 import { t, num, applyDOM, onLangChange, setLang } from './i18n.js';
-import { applyTheme, applyScale, onScaleChange, getScale } from './prefs.js';
+import { applyTheme, applyScale, onScaleChange, getScale, getTheme } from './prefs.js';
 import { openSettings, refreshHealth, blockers, setOnChange, H } from './settings.js';
 import { openWelcome } from './welcome.js';
 import { splitSheet } from './sheet.js';
+import { MenuBar } from './menubar.js';
+import { openHelp, openAbout, REPO } from './help.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -99,14 +101,18 @@ async function showModel(rel, { manual = false } = {}) {
   renderLibrary();
 }
 
-document.querySelectorAll('#view-mode button').forEach((b) => b.addEventListener('click', () => {
-  document.querySelectorAll('#view-mode button').forEach((x) => x.classList.toggle('on', x === b));
-  viewer.setMode(b.dataset.mode);
-}));
-$('#flat').addEventListener('click', (e) => {
-  e.currentTarget.classList.toggle('on');
-  viewer.setFlat(e.currentTarget.classList.contains('on'));
-});
+// Режим вида и грани — одни функции для кнопок, меню и клавиш.
+function setViewMode(mode) {
+  document.querySelectorAll('#view-mode button').forEach((x) => x.classList.toggle('on', x.dataset.mode === mode));
+  viewer.setMode(mode);
+}
+function toggleFlat() {
+  const on = !$('#flat').classList.contains('on');
+  $('#flat').classList.toggle('on', on);
+  viewer.setFlat(on);
+}
+document.querySelectorAll('#view-mode button').forEach((b) => b.addEventListener('click', () => setViewMode(b.dataset.mode)));
+$('#flat').addEventListener('click', toggleFlat);
 $('#fit').addEventListener('click', () => viewer.fit());
 
 // ── просмотр кадров и спеки ───────────────────────────────────────────────
@@ -898,6 +904,123 @@ function applyUi(ui = {}) {
   applyScale(ui.scale || 1);
   if (ui.lang) setLang(ui.lang);
 }
+
+// ── строка меню, как в 3DPainter ──────────────────────────────────────────
+const MOD = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
+const host = window.modelist || null;
+async function saveUi(patch) {
+  await api('/settings', { method: 'PATCH', body: { ui: patch } }).catch((e) => toast(errText(e), true));
+}
+function setThemeUi(v) { applyTheme(v); saveUi({ theme: v }); }
+function setScaleUi(k) {
+  const v = Math.round(Math.min(1.4, Math.max(0.8, k)) * 20) / 20;
+  applyScale(v);
+  saveUi({ scale: v });
+}
+// Папка внутри рабочей: в Finder — только из окна приложения.
+function reveal(rel) {
+  const root = H.health?.workspace?.path;
+  if (!host?.openPath || !root) { toast(t('menu.appOnly'), true); return; }
+  host.openPath(rel ? `${root}/${rel}` : root);
+}
+const taskFolder = () => (S.task ? (S.task.media?.models?.length ? `out/${S.task.slug}` : `refs/${S.task.slug}`) : null);
+function download(rel) {
+  const a = el('a', { href: fileUrl(rel, true), download: base(rel) });
+  document.body.append(a); a.click(); a.remove();
+}
+
+const menuBar = new MenuBar($('#menubar'), [
+  { title: () => t('menu.file'), items: [
+    { label: () => t('side.new'), hint: MOD + 'N', action: () => selectTask(null) },
+    { label: () => t('menu.openModel'), action: () => $('#open-model').click() },
+    '-',
+    { label: () => t('menu.showWorkspace'), disabled: () => !H.health?.workspace?.exists, action: () => reveal('') },
+    { label: () => t('menu.showTaskFolder'), disabled: () => !S.task, action: () => reveal(taskFolder()) },
+    '-',
+    { label: () => t('settings.title') + '…', hint: MOD + ',', action: () => openSettings() },
+    { label: () => t('menu.welcome'), action: () => openWelcome({ onDone: afterSettings }) },
+  ] },
+  { title: () => t('menu.view'), items: [
+    { label: () => t('view.material'), hint: '1', radio: () => viewer.mode === 'material', action: () => setViewMode('material') },
+    { label: () => t('view.clay'), hint: '2', radio: () => viewer.mode === 'clay', action: () => setViewMode('clay') },
+    { label: () => t('view.wire'), hint: '3', radio: () => viewer.mode === 'wire', action: () => setViewMode('wire') },
+    '-',
+    { label: () => t('view.flat'), hint: 'F', checked: () => viewer.flat, action: toggleFlat },
+    { label: () => t('view.fit.hint'), hint: 'Home', disabled: () => !viewer.root, action: () => viewer.fit() },
+    '-',
+    { label: () => t('theme.light'), radio: () => getTheme() === 'light', action: () => setThemeUi('light') },
+    { label: () => t('theme.dark'), radio: () => getTheme() === 'dark', action: () => setThemeUi('dark') },
+    { label: () => t('theme.system'), radio: () => getTheme() === 'system', action: () => setThemeUi('system') },
+    '-',
+    { label: () => t('menu.bigger'), hint: MOD + '+', action: () => setScaleUi(getScale() + 0.05) },
+    { label: () => t('menu.smaller'), hint: MOD + '−', action: () => setScaleUi(getScale() - 0.05) },
+    { label: () => t('menu.normalSize'), hint: MOD + '0', action: () => setScaleUi(1) },
+  ] },
+  { title: () => t('menu.task'), items: [
+    { label: () => t('chat.stop'), disabled: () => !S.task?.running, action: () => api(`/tasks/${S.task.id}/stop`, { method: 'POST' }).then(() => refreshTask()) },
+    { label: () => t('task.openSpec'), disabled: () => !S.task?.media?.spec, action: () => openDoc(S.task.media.spec) },
+    '-',
+    { label: () => t('menu.downloadModel'), disabled: () => !S.task?.media?.models?.length, action: () => download(S.task.media.models[0].path) },
+    { label: () => t('menu.downloadBlend'), disabled: () => !S.task?.media?.blend, action: () => download(S.task.media.blend) },
+    '-',
+    { label: () => t('task.done'), disabled: () => !S.task || S.task.state === 'done', action: () => patch({ state: 'done' }) },
+    { label: () => t('task.reopen'), disabled: () => !S.task || S.task.state !== 'done', action: () => patch({ state: 'open' }) },
+  ] },
+  { title: () => 'Blender', items: [
+    { label: () => t('bl.openWindow'), action: async () => {
+      try { const r = await api('/blender/launch', { method: 'POST', body: {} }); if (r.code) toast(errText(r), true); } catch (e) { toast(errText(e), true); }
+      renderBlender();
+    } },
+    { label: () => t('menu.checkBlender'), action: async () => {
+      const v = await api('/blender').catch(() => ({ online: false }));
+      toast(v.online ? t('bl.running', { v: v.version || '' }) : t('blender.auto'), !v.online && H.health?.blender?.bin === false);
+    } },
+    '-',
+    { label: () => t('menu.blenderSettings'), action: () => openSettings('blender') },
+  ] },
+  { title: () => t('menu.help'), items: [
+    { label: () => t('help.title'), hint: 'F1', action: openHelp },
+    '-',
+    { label: () => t('menu.github'), action: () => window.open(REPO, '_blank') },
+    { label: () => t('menu.releases'), action: () => window.open(REPO + '/releases', '_blank') },
+    { label: () => t('menu.issue'), action: () => window.open(REPO + '/issues/new', '_blank') },
+    '-',
+    { label: () => t('about.title'), action: () => openAbout(S.meta?.version || '') },
+  ] },
+]);
+onLangChange(() => menuBar.relabel());
+
+// Открыть модель с диска — просто посмотреть, в рабочую папку она не копируется.
+$('#open-model').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  S.autoFollow = false;
+  S.shown = 'local:' + f.name;
+  $('#empty').hidden = true;
+  const url = URL.createObjectURL(f);
+  try { await viewer.load(url, f.name.split('.').pop().toLowerCase()); } catch (err) { toast(t('viewer.fail', { msg: err.message }), true); }
+  URL.revokeObjectURL(url);
+  renderOutputs();
+});
+
+// Клавиши: цифры и буквы — когда курсор не в поле ввода; с ⌘ — всегда.
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  const mod = e.metaKey || e.ctrlKey;
+  if (e.key === 'F1') { e.preventDefault(); openHelp(); return; }
+  if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); selectTask(null); return; }
+  if (mod && e.key === ',') { e.preventDefault(); openSettings(); return; }
+  if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setScaleUi(getScale() + 0.05); return; }
+  if (mod && e.key === '-') { e.preventDefault(); setScaleUi(getScale() - 0.05); return; }
+  if (mod && e.key === '0') { e.preventDefault(); setScaleUi(1); return; }
+  if (typing || mod || e.altKey) return;
+  if (e.key === '1') setViewMode('material');
+  else if (e.key === '2') setViewMode('clay');
+  else if (e.key === '3') setViewMode('wire');
+  else if (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'а') toggleFlat();
+  else if (e.key === 'Home') viewer.fit();
+});
 
 async function boot() {
   const [settings, meta] = await Promise.all([api('/settings'), api('/meta')]);

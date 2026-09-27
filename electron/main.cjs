@@ -54,6 +54,11 @@ function createWindow() {
     // Снимок окна для README: MODELIST_SCREENSHOT=docs/screenshot.png npm run desktop
     if (process.env.MODELIST_SCREENSHOT) {
       await new Promise((r) => setTimeout(r, Number(process.env.MODELIST_SCREENSHOT_DELAY || 4000)));
+      // Действие перед снимком (раскрыть меню, открыть окно) — для проверок в самом приложении.
+      if (process.env.MODELIST_SCREENSHOT_JS) {
+        await win.webContents.executeJavaScript(process.env.MODELIST_SCREENSHOT_JS).catch((e) => console.error('[3DModelist] действие:', e.message));
+        await new Promise((r) => setTimeout(r, 800));
+      }
       const img = await win.webContents.capturePage();
       require('node:fs').writeFileSync(process.env.MODELIST_SCREENSHOT, img.toPNG());
       console.log('[3DModelist] снимок:', process.env.MODELIST_SCREENSHOT);
@@ -114,8 +119,9 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(isMac ? [{ role: 'appMenu' }] : []),
     { role: 'editMenu' },
-    { role: 'viewMenu' },
-    { role: 'windowMenu' },
+    // viewMenu не берём: его ⌘+/⌘− масштабирует страницу, а у студии свой
+    // размер интерфейса на тех же клавишах — один смысл, один регулятор.
+    { role: 'windowMenu', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'front' }] },
   ]));
 }
 
@@ -132,6 +138,16 @@ ipcMain.handle('claude-login', async () => {
     '-e', 'tell application "Terminal" to activate',
   ]);
   return true;
+});
+
+// Показать папку в Finder — только внутри рабочей папки.
+ipcMain.handle('open-path', async (_e, p) => {
+  const { load } = await import(pathToFileURL(path.join(__dirname, '..', 'server', 'settings.mjs')).href);
+  const root = load().workspace;
+  const abs = path.resolve(String(p || ''));
+  if (!root || !(abs === root || abs.startsWith(root + path.sep))) return false;
+  const err = await shell.openPath(abs);
+  return !err;
 });
 
 ipcMain.handle('pick-folder', async () => {

@@ -89,8 +89,8 @@ export class Viewer {
     this.onInfo(null);
   }
 
-  async load(url) {
-    const ext = url.split('?')[0].split('.').pop().toLowerCase();
+  // ext — когда адрес без расширения (файл с диска открыт как blob:).
+  async load(url, ext = url.split('?')[0].split('.').pop().toLowerCase()) {
     let obj;
     if (ext === 'glb' || ext === 'gltf') obj = (await new GLTFLoader().loadAsync(url)).scene;
     else if (ext === 'fbx') obj = await new FBXLoader().loadAsync(url);

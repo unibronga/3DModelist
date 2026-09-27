@@ -35,6 +35,7 @@
   --notice-text: #7a4a00;
   --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   --ui: 1;                         /* масштаб интерфейса, задаётся в настройках */
+  --menu-h: 30px;                  /* строка меню вверху */
   color-scheme: light;
 }
 
@@ -121,7 +122,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr) 380px;
   grid-template-rows: minmax(0, 1fr);
-  height: calc(100vh / var(--ui));      /* под zoom высота окна делится на масштаб */
+  height: calc(100vh / var(--ui) - var(--menu-h));   /* под zoom высота окна делится на масштаб; сверху строка меню */
 }
 .app > * { min-height: 0; }
 
@@ -668,3 +669,55 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 4px;
   background: rgba(0, 0, 0, 0.55); color: #fff;
 }
+
+/* ── строка меню, как в 3DPainter ──────────────────────────────────────── */
+.menubar {
+  position: relative; z-index: 30;
+  height: var(--menu-h);
+  display: flex; align-items: stretch; gap: 1px;
+  padding: 0 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.menu-title {
+  padding: 0 10px; border: 0; background: none; border-radius: 6px;
+  margin: 3px 0; color: var(--text); cursor: default; white-space: nowrap; font-size: 12.5px;
+}
+.menu-title:hover { background: var(--panel-2); }
+.menu-title.open { background: var(--accent-soft); color: var(--accent); }
+.menu-drop {
+  position: absolute; top: 100%; display: none;
+  min-width: 240px; padding: 5px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 0 0 10px 10px; box-shadow: var(--shadow);
+}
+.menu-drop.open { display: block; }
+.menu-item {
+  display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px;
+  width: 100%; height: 26px; padding: 0 8px 0 4px;
+  border: 0; background: none; border-radius: 6px;
+  text-align: left; color: var(--text); cursor: default; font-size: 12.5px;
+}
+.menu-item:hover { background: var(--accent-soft); color: var(--accent); }
+.menu-item.disabled { opacity: 0.4; }
+.menu-item.disabled:hover { background: none; color: var(--text); }
+.menu-item .mark { text-align: center; color: var(--accent); font-size: 11px; }
+.menu-item .hint { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.menu-sep { height: 1px; margin: 4px 6px; background: var(--line); }
+
+/* ── справка и «О программе» ────────────────────────────────────────────── */
+.sheet.wide { width: min(860px, 100%); }
+.help-how ol { margin: 6px 0 0; padding-left: 20px; color: var(--text-2); line-height: 1.6; }
+.help-how h3, .help-block h3 { margin: 16px 0 8px; font-size: 13px; }
+.help-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 28px; }
+.help-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; align-items: center; padding: 3px 0; font-size: 12.5px; color: var(--text-2); }
+kbd {
+  font: 11.5px var(--mono); justify-self: start;
+  padding: 1px 6px; border-radius: 5px;
+  background: var(--panel-2); border: 1px solid var(--line-strong); color: var(--text);
+}
+.about-head { display: flex; align-items: center; gap: 14px; margin: 14px 0 6px; }
+.about-icon { width: 64px; height: 64px; border-radius: 14px; }
+.about-name { font-size: 22px; font-weight: 800; }
+.about-rows { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; font-size: 12.5px; margin: 8px 0; }
+.sheet-body a { color: var(--accent); }

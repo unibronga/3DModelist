@@ -5,7 +5,11 @@
 const subs = new Set();
 export const onScaleChange = (fn) => subs.add(fn);
 
+let current = 'system';
+export const getTheme = () => current;
+
 export function applyTheme(theme) {
+  current = theme === 'light' || theme === 'dark' ? theme : 'system';
   const root = document.documentElement;
   if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
   else delete root.dataset.theme;               // «как в системе»

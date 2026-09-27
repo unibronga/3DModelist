@@ -17,8 +17,8 @@
     "desktop:dev": "MODELIST_DEV_URL=http://localhost:5274 electron .",
     "icon": "electron scripts/prepare-icon.cjs",
     "i18n": "node scripts/check-i18n.mjs",
-    "dist": "npm run icon && npm run build && electron-builder --mac",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist": "npm run icon && npm run build && electron-builder --mac --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "electron": "^44.4.3",

@@ -15,6 +15,7 @@ import { UserError } from './errors.mjs';
 export const GENERATORS = [
   {
     id: 'tripo3d/p2/image-to-3d', label: 'Tripo P2', tag: 'персонажи, чистая квад-сетка',
+    typical: 110,                          // секунд: замер 27.09 — 108 с счёта
     price: (o) => (o.texture ? 1.10 : 1.00),
     detail: { min: 500, max: 25000, def: 3500, unit: 'faces' },
     input: (img, o) => ({
@@ -24,6 +25,7 @@ export const GENERATORS = [
   },
   {
     id: 'fal-ai/trellis-2', label: 'Trellis 2', tag: 'органика, стилизация',
+    typical: 60,                           // p50 fal ~55 с
     price: () => 0.30,
     detail: { min: 5000, max: 200000, def: 20000, unit: 'verts' },
     input: (img, o) => ({
@@ -32,6 +34,7 @@ export const GENERATORS = [
   },
   {
     id: 'fal-ai/hunyuan-3d/v3.1/rapid/image-to-3d', label: 'Hunyuan 3.1 Rapid', tag: 'быстрый черновик',
+    typical: 40,
     price: () => 0.225,
     detail: null,
     input: (img, o) => ({ input_image_url: img, enable_geometry: !o.texture }),
@@ -105,9 +108,11 @@ export async function submit(id, { model, texture, detail, ref }) {
   if (!g) throw new UserError('unknownGen');
   const task = loadTask(id);
   if (!task) throw new UserError('noTask');
-  if (task.gen?.state === 'queued' || task.gen?.state === 'running') throw new UserError('genRunning');
+  if (['queued', 'running', 'downloading'].includes(task.gen?.state)) throw new UserError('genRunning');
   const refRel = ref || task.refs?.[0];
   if (!refRel) throw new UserError('noRef');
+  const refAbs = path.resolve(ws(), refRel);
+  if (!refAbs.startsWith(path.join(ws(), 'refs') + path.sep) || !fs.existsSync(refAbs)) throw new UserError('noRef');
 
   const opts = { texture: !!texture, detail: g.detail ? Math.round(Math.min(g.detail.max, Math.max(g.detail.min, Number(detail) || g.detail.def))) : null };
   const price = g.price(opts);
@@ -116,9 +121,9 @@ export async function submit(id, { model, texture, detail, ref }) {
   });
   patchTask(id, (t) => {
     t.gen = {
-      state: 'queued', model: g.id, label: g.label, opts, ref: refRel, price,
+      state: 'queued', model: g.id, label: g.label, opts, ref: refRel, price, typical: g.typical,
       request_id: q.request_id, status_url: q.status_url, response_url: q.response_url,
-      started_at: Date.now() / 1000, files: [],
+      started_at: Date.now() / 1000, files: [], queue_position: q.queue_position ?? null,
     };
     t.spent_usd = (t.spent_usd || 0) + price;
   });
@@ -136,17 +141,30 @@ export async function watch(id) {
     for (;;) {
       const t = loadTask(id);
       const g = t?.gen;
-      if (!g || !['queued', 'running'].includes(g.state)) return;
+      if (!g || !['queued', 'running', 'downloading'].includes(g.state)) return;
       let st;
       try { st = await falFetch(g.status_url); } catch (e) {
         if (e.status && e.status < 500) throw e;
         await sleep(5000); continue;          // сеть моргнула — ждём дальше
       }
       if (st.status === 'COMPLETED') break;
+      // Шаги для экрана: в очереди (с позицией) → генерация (с момента начала счёта).
       const state = st.status === 'IN_PROGRESS' ? 'running' : 'queued';
-      if (state !== g.state) patchTask(id, (x) => { x.gen.state = state; });
-      await sleep(4000);
+      const pos = st.queue_position ?? null;
+      if (state !== g.state || pos !== g.queue_position) {
+        patchTask(id, (x) => {
+          if (state === 'running' && !x.gen.running_at) x.gen.running_at = Date.now() / 1000;
+          x.gen.state = state;
+          x.gen.queue_position = pos;
+        });
+      }
+      await sleep(3000);
     }
+    patchTask(id, (x) => {
+      if (!x.gen.running_at) x.gen.running_at = Date.now() / 1000;
+      x.gen.state = 'downloading';
+      x.gen.downloading_at = Date.now() / 1000;
+    });
     const t = loadTask(id);
     const res = await falFetch(t.gen.response_url);   // тут же приходят ошибки валидации
     const files = await download(t, res);

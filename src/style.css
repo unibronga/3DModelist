@@ -618,3 +618,53 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .set-grid .select { width: auto; min-width: 180px; }
 .agent-row .select { padding: 6px 8px; }
 .note { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+
+/* ── процесс в центре: генерация или ход агента ────────────────────────── */
+.process {
+  position: absolute; z-index: 4;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(520px, calc(100% - 48px));
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 16px; box-shadow: var(--shadow);
+  padding: 18px 20px 16px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+/* модель уже в окне — карточка уезжает наверх, под панель вида */
+.process.compact { top: 110px; transform: translateX(-50%); padding: 12px 16px; gap: 10px; }
+.process.compact .proc-note { display: none; }
+.proc-head { display: flex; align-items: center; gap: 12px; }
+.proc-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.proc-title { font-weight: 650; font-size: 15px; }
+.proc-sub { color: var(--text-2); font-size: 12.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-time { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-2); font-size: 14px; }
+.spinner {
+  width: 22px; height: 22px; flex: none; border-radius: 50%;
+  border: 2.5px solid var(--accent-soft); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.bar { height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--line); }
+.bar-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.9s linear; }
+.bar.indet .bar-fill { width: 35%; animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+.proc-steps { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.proc-step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
+.proc-step.active { color: var(--text); font-weight: 600; }
+.proc-step.done { color: var(--text-2); }
+.proc-mark {
+  width: 14px; height: 14px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-size: 9px;
+  border: 1.5px solid var(--line-strong);
+}
+.proc-step.done .proc-mark { background: var(--ok); border-color: var(--ok); color: #fff; }
+.proc-step.active .proc-mark { border-color: var(--accent); background: var(--accent-soft); animation: pulse 1.2s ease-in-out infinite; }
+.proc-note { font-size: 12px; color: var(--text-3); }
+
+/* выбор картинки для генератора */
+.refs.pick .ref { cursor: pointer; }
+.refs.pick .ref.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ref-badge {
+  position: absolute; left: 3px; bottom: 3px;
+  font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55); color: #fff;
+}

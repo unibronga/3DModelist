@@ -95,16 +95,12 @@ async function health() {
 // ── задача: создание ────────────────────────────────────────────────────────
 const IMG_RE = /^data:image\/(png|jpeg|jpg|webp);base64,/;
 
-function createTask(body) {
+// Загруженные картинки → refs/<папка>/; возвращает пути от корня рабочей папки.
+function saveUploads(slug, uploads = []) {
   const ROOT = ws();
-  const name = String(body.name || '').trim();
-  if (!name) throw new UserError('needName');
-  const slug = freeSlug(slugify(body.slug || name));
-  const id = newId();
   const refDir = path.join(ROOT, 'refs', slug);
-  const refs = [];
-
-  for (const r of body.uploads || []) {             // загруженные картинки
+  const out = [];
+  for (const r of uploads) {
     const m = IMG_RE.exec(r.data || '');
     if (!m) continue;
     fs.mkdirSync(refDir, { recursive: true });
@@ -113,8 +109,18 @@ function createTask(body) {
     let fname = `${base}.${ext}`;
     for (let i = 2; fs.existsSync(path.join(refDir, fname)); i++) fname = `${base}_${i}.${ext}`;
     fs.writeFileSync(path.join(refDir, fname), Buffer.from(r.data.slice(m[0].length), 'base64'));
-    refs.push(path.relative(ROOT, path.join(refDir, fname)));
+    out.push(path.relative(ROOT, path.join(refDir, fname)));
   }
+  return out;
+}
+
+function createTask(body) {
+  const ROOT = ws();
+  const name = String(body.name || '').trim();
+  if (!name) throw new UserError('needName');
+  const slug = freeSlug(slugify(body.slug || name));
+  const id = newId();
+  const refs = saveUploads(slug, body.uploads);
   for (const p of body.refPaths || []) {             // уже лежащие в refs/
     const abs = path.resolve(ROOT, p);
     if (abs.startsWith(path.join(ROOT, 'refs') + path.sep) && fs.existsSync(abs)) refs.push(path.relative(ROOT, abs));
@@ -164,7 +170,7 @@ async function api(req, res, url) {
       models: await versions(),
       efforts: EFFORTS,
       generators: GENERATORS.map((g) => ({
-        id: g.id, label: g.label, tag: g.tag, detail: g.detail,
+        id: g.id, label: g.label, tag: g.tag, detail: g.detail, typical: g.typical,
         price: g.price({ texture: false }), priceTex: g.price({ texture: true }),
       })),
       busy: busyTask(),
@@ -263,7 +269,7 @@ async function api(req, res, url) {
       // Blender поднимаем сами и без окна — это может занять до ~10 с,
       // поэтому отвечаем сразу, а ход агента стартует следом.
       starting = id;
-      patchTask(id, (t) => { t.agent_state = 'running'; });
+      patchTask(id, (t) => { t.agent_state = 'running'; t.turn_started_at = Date.now() / 1000; });
       (async () => {
         try {
           const bl = await blender.ensure();
@@ -280,6 +286,14 @@ async function api(req, res, url) {
       return send(res, 200, { ok: true });
     }
     if (sub === 'stop' && m === 'POST') return send(res, 200, { ok: stopTurn(id) });
+    // Докинуть референсы в задачу — например, виды, вырезанные из листа персонажа.
+    if (sub === 'refs' && m === 'POST') {
+      const b = await readBody(req);
+      const added = saveUploads(task.slug, b.uploads);
+      const t = patchTask(id, (x) => { x.refs = [...(x.refs || []), ...added]; });
+      if (added.length) addEvent(id, { kind: 'system', key: 'ev.refsAdded', params: { n: added.length } });
+      return send(res, 200, { ...taskView(t), added });
+    }
     if (sub === 'generate' && m === 'POST') {
       const b = await readBody(req);
       if (!genById(b.model)) return send(res, 400, errBody(new UserError('unknownGen')));
@@ -323,7 +337,7 @@ function recover() {
       patchTask(t.id, (x) => { x.agent_state = 'waiting'; });
       addEvent(t.id, { kind: 'system', key: 'ev.restarted' });
     }
-    if (['queued', 'running'].includes(t.gen?.state)) watch(t.id);
+    if (['queued', 'running', 'downloading'].includes(t.gen?.state)) watch(t.id);
   }
 }
 

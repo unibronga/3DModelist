@@ -54,6 +54,9 @@ export function taskMedia(task) {
   const frames = walk(path.join(ROOT, 'renders'), 2).filter(isImage)
     .filter((f) => f.mtime >= since || f.path.startsWith(`renders/${task.slug}/`))
     .sort((a, b) => b.mtime - a.mtime).slice(0, 40);
+  // Превью, которое рисует сам генератор, — тоже кадр: по нему видно, что вышло.
+  const genShots = walk(path.join(ROOT, 'out', task.slug), 2).filter(isImage).filter((f) => f.path.includes('/gen_') && !/texture|_map/.test(f.path));
+  frames.unshift(...genShots);
   const models = walk(path.join(ROOT, 'out'), 3).filter(isModel)
     .filter((f) => f.path.startsWith(`out/${task.slug}/`) || f.mtime >= since)
     .sort((a, b) => b.mtime - a.mtime);

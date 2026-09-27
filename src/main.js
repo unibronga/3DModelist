@@ -7,6 +7,7 @@ import { t, num, applyDOM, onLangChange, setLang } from './i18n.js';
 import { applyTheme, applyScale, onScaleChange, getScale } from './prefs.js';
 import { openSettings, refreshHealth, blockers, setOnChange, H } from './settings.js';
 import { openWelcome } from './welcome.js';
+import { splitSheet } from './sheet.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -308,6 +309,22 @@ function genBlock(g, onChange) {
       })));
 }
 
+// Картинки для генератора: миниатюры на выбор. sheetInfo — результат splitSheet
+// для выбранной картинки (null — ещё считается).
+function sourcePicker({ items, selected, onPick, sheetInfo, onSplit, splitting }) {
+  const n = sheetInfo?.views?.length || 0;
+  return el('div', { class: 'field' },
+    el('div', { class: 'label' }, t('gen.source')),
+    el('div', { class: 'refs pick' }, ...items.map((it, i) => el('div', {
+      class: 'ref' + (i === selected ? ' on' : ''), style: `background-image:url("${it.src}")`, title: it.title,
+      onclick: () => onPick(i),
+    }, it.badge && el('span', { class: 'ref-badge' }, it.badge)))),
+    n >= 2 && el('div', { class: 'notice' },
+      el('div', {}, t('gen.sheet', { n })),
+      !onSplit && el('div', {}, t('gen.sheet.pickView')),
+      onSplit && el('button', { class: 'btn primary', disabled: splitting, onclick: onSplit }, splitting ? t('common.wait') : t('gen.sheet.split'))));
+}
+
 async function loadRefsTree() {
   if (!S.refsTree) S.refsTree = await api('/refs').catch(() => []);
   return S.refsTree;
@@ -380,6 +397,7 @@ function renderNewForm() {
           ['script', t('route.script'), t('route.script.hint')],
           ['generator', t('route.generator'), t('route.generator.hint')],
         ], d.route, (v) => { d.route = v; renderPanel(); }, 'full')),
+      isGen ? formSource(d) : null,
       isGen ? genBlock(d.gen, (p) => { Object.assign(d.gen, p); renderPanel(); }) : null,
       agentBlock(d.agent, (p) => { Object.assign(d.agent, p); renderPanel(); }),
     ),
@@ -388,6 +406,28 @@ function renderNewForm() {
       isGen && el('div', { class: 'cost' }, t('form.genCost'), el('b', {}, money(price))),
       start),
   );
+}
+
+// Первая картинка заказа — лист? Тогда режем на виды прямо в форме:
+// генератору уйдёт выбранный вид, агенту — и лист, и все виды.
+function formSource(d) {
+  const src = d.uploads[0]?.data || (d.refPaths[0] && fileUrl(d.refPaths[0]));
+  if (!src) return null;
+  if (S.formSheet?.src !== src) {
+    S.formSheet = { src, info: null };
+    splitSheet(src).then((info) => { if (S.formSheet?.src === src) { S.formSheet.info = info; d.gen.view = 0; renderPanel(); } }, () => {});
+    return null;
+  }
+  const views = S.formSheet.info?.views || [];
+  if (views.length < 2) return null;
+  const pick = Math.min(d.gen.view || 0, views.length - 1);
+  return el('div', { class: 'field' },
+    el('div', { class: 'label' }, t('gen.source')),
+    el('div', { class: 'muted' }, t('gen.sheet.auto', { n: views.length })),
+    el('div', { class: 'refs pick' }, ...views.map((v, i) => el('div', {
+      class: 'ref' + (i === pick ? ' on' : ''), style: `background-image:url("${v}")`, title: t('gen.view', { n: i + 1 }),
+      onclick: () => { d.gen.view = i; renderPanel(); },
+    }, el('span', { class: 'ref-badge' }, t('gen.view', { n: i + 1 }))))));
 }
 
 document.addEventListener('paste', (e) => {
@@ -406,13 +446,21 @@ async function createAndStart(btn) {
   btn.disabled = true;
   btn.textContent = t('form.creating');
   try {
+    // Лист персонажа: виды кладём в референсы рядом с листом.
+    const views = isGen && S.formSheet?.info?.views?.length >= 2 ? S.formSheet.info.views : [];
+    const uploads = [...d.uploads, ...views.map((data, i) => ({ name: `view_${i + 1}.png`, data }))];
     const task = await api('/tasks', {
       method: 'POST',
-      body: { name: d.name, brief: d.brief, route: d.route, uploads: d.uploads, refPaths: d.refPaths, agent: d.agent },
+      body: { name: d.name, brief: d.brief, route: d.route, uploads, refPaths: d.refPaths, agent: d.agent },
     });
-    if (isGen) await api(`/tasks/${task.id}/generate`, { method: 'POST', body: { ...d.gen } });
+    if (isGen) {
+      const k = (d.gen.view || 0) + 1;
+      const ref = views.length ? task.refs.find((r) => new RegExp(`/view_${k}\\.png$`).test(r)) : undefined;
+      await api(`/tasks/${task.id}/generate`, { method: 'POST', body: { ...d.gen, ref } });
+    }
     else await api(`/tasks/${task.id}/agent`, { method: 'POST', body: {} });
     S.draft = freshDraft();
+    S.formSheet = null;
     S.refsTree = null;
     await refreshTasks();
     await selectTask(task.id);
@@ -422,6 +470,87 @@ async function createAndStart(btn) {
     btn.textContent = t('form.retry');
   }
 }
+
+// ── процесс в центре: что происходит прямо сейчас ─────────────────────────
+// Пока идёт генерация или ход агента, человек должен видеть шаги, время и
+// что делается сейчас — а не пустое окно (претензия владельца 27.09).
+const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+function stepRow(steps) {
+  return el('div', { class: 'proc-steps' }, ...steps.map(([label, state]) => el('div', { class: 'proc-step ' + state },
+    el('span', { class: 'proc-mark' }, state === 'done' ? '✓' : state === 'skip' ? '–' : ''), label)));
+}
+
+function renderProcess() {
+  const box = $('#process');
+  const tk = S.task;
+  const g = tk?.gen;
+  const now = Date.now() / 1000;
+  const genActive = g && ['queued', 'running', 'downloading'].includes(g.state);
+  const agentActive = !!tk?.running;
+  if (!tk || (!genActive && !agentActive)) {
+    box.hidden = true;
+    $('#empty').hidden = !!S.shown;
+    return;
+  }
+  box.hidden = false;
+  $('#empty').hidden = true;
+  box.classList.toggle('compact', !!S.shown);       // модель уже в окне — карточка сверху, не поверх
+
+  if (genActive) {
+    const typical = g.typical || 90;
+    const pct = g.state === 'queued' ? 4
+      : g.state === 'running' ? Math.min(94, 6 + ((now - (g.running_at || g.started_at)) / typical) * 88) : 97;
+    const st = (i) => {
+      const order = { queued: 1, running: 2, downloading: 3 }[g.state];
+      return i < order ? 'done' : i === order ? 'active' : 'wait';
+    };
+    box.replaceChildren(
+      el('div', { class: 'proc-head' },
+        el('span', { class: 'spinner' }),
+        el('div', {},
+          el('div', { class: 'proc-title' }, t('proc.gen.title', { name: g.label })),
+          el('div', { class: 'proc-sub' }, t('proc.gen.typical', { n: Math.max(1, Math.round(typical / 60)) }))),
+        el('div', { class: 'proc-time' }, clock(now - g.started_at))),
+      el('div', { class: 'bar' }, el('div', { class: 'bar-fill', style: `width:${pct.toFixed(1)}%` })),
+      stepRow([
+        [t('proc.step.sent'), 'done'],
+        [g.queue_position ? t('proc.step.queuePos', { n: g.queue_position }) : t('proc.step.queue'), st(1)],
+        [t('proc.step.run'), st(2)],
+        [t('proc.step.download'), st(3)],
+        [t('proc.step.done'), 'wait'],
+      ]),
+      el('div', { class: 'proc-note' }, t('proc.gen.note')));
+    return;
+  }
+
+  // Ход агента: этап с табло, последнее действие, время хода.
+  const rows = tk.pipe?.stages || [];
+  const cur = rows.find((r) => r.state === 'running');
+  let action = '';
+  for (let i = S.events.length - 1; i >= 0; i--) {
+    const ev = S.events[i];
+    if (ev.kind === 'tool') { action = toolText(ev); break; }
+    if (ev.kind === 'text') { action = ev.text.split('\n')[0].slice(0, 120); break; }
+    if (ev.kind === 'user' || ev.key === 'ev.agentStarted') break;
+  }
+  const since = tk.turn_started_at || now;
+  box.replaceChildren(
+    el('div', { class: 'proc-head' },
+      el('span', { class: 'spinner' }),
+      el('div', {},
+        el('div', { class: 'proc-title' }, cur ? t('proc.agent.stage', { stage: t('stage.' + cur.n + '.title') }) : t('proc.agent.title')),
+        el('div', { class: 'proc-sub' }, action ? t('proc.agent.action', { action }) : t('proc.agent.starting'))),
+      el('div', { class: 'proc-time' }, clock(now - since))),
+    el('div', { class: 'bar indet' }, el('div', { class: 'bar-fill' })),
+    stepRow(S.meta.stages.map((s) => {
+      const r = rows.find((x) => x.n === s.n);
+      const state = !r ? 'wait' : r.state === 'done' ? 'done' : r.state === 'skipped' ? 'skip' : r.state === 'running' ? 'active' : 'wait';
+      return [t('stage.' + s.n), state];
+    })),
+    el('div', { class: 'proc-note' }, t('proc.agent.note')));
+}
+setInterval(() => { try { renderProcess(); } catch { /* до загрузки */ } }, 1000);
 
 // ── правая панель: задача ─────────────────────────────────────────────────
 function renderTaskPanel() {
@@ -494,29 +623,60 @@ function genCard(tk) {
   const badge = {
     queued: ['run', t('gen.queued')], running: ['run', t('gen.running')], done: ['done', t('badge.done')], error: ['err', t('badge.error')],
   }[st] || ['', t('gen.notRun')];
-  const d = S.genDraft ||= { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null };
-  const busy = st === 'queued' || st === 'running';
+  const d = S.genDraft ||= { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null, ref: null };
+  const busy = ['queued', 'running', 'downloading'].includes(st);
+  // Картинка для генератора: выбранная; иначе — первый вырезанный вид; иначе — первый референс.
+  const refs = tk.refs || [];
+  const cur = refs.includes(d.ref) ? d.ref : refs.find((r) => /\/view_\d+\.png$/.test(r)) || refs[0];
+  const curSrc = cur && fileUrl(cur);
+  if (curSrc && S.sheetFor !== curSrc) {
+    S.sheetFor = curSrc;
+    S.sheetInfo = null;
+    splitSheet(curSrc).then((info) => { if (S.sheetFor === curSrc) { S.sheetInfo = info; renderTaskPanel(); } }, () => {});
+  }
+  const sheetN = S.sheetFor === curSrc ? S.sheetInfo?.views?.length || 0 : 0;
   const price = (() => { const m = genMeta(d.model); return m ? (d.texture ? m.priceTex : m.price) : 0; })();
   const card = el('div', { class: 'card' },
     el('div', { class: 'card-h' }, g?.label || t('gen.title'), el('span', { class: 'badge ' + badge[0] }, badge[1])),
     st === 'error' && el('div', { class: 'ev error' }, g.errorCode ? errText({ code: g.errorCode }) : g.error),
-    g?.files?.length && el('div', { class: 'muted' }, t('gen.files') + ' ', ...g.files.filter((f) => /\.(glb|fbx|obj)$/i.test(f))
+    g?.files?.length > 0 && el('div', { class: 'muted' }, t('gen.files') + ' ', ...g.files.filter((f) => /\.(glb|fbx|obj)$/i.test(f))
       .map((f) => el('a', { href: '#', 'data-file': f, style: 'margin-right:8px' }, base(f)))),
   );
   if (!busy) {
     const box = el('div', {});
+    const split = async () => {
+      S.splitting = true; renderTaskPanel();
+      try {
+        const info = await splitSheet(curSrc);
+        const r = await api(`/tasks/${tk.id}/refs`, { method: 'POST', body: { uploads: info.views.map((data, i) => ({ name: `view_${i + 1}.png`, data })) } });
+        d.ref = r.added[0];
+        await refreshTask(true);
+      } catch (e) { toast(errText(e), true); }
+      S.splitting = false; renderTaskPanel();
+    };
     const draw = () => box.replaceChildren(
+      sourcePicker({
+        items: refs.map((r) => ({ src: fileUrl(r), title: r, badge: (/\/view_(\d+)\.png$/.exec(r) || [])[1] && t('gen.view', { n: /\/view_(\d+)\.png$/.exec(r)[1] }) })),
+        selected: refs.indexOf(cur),
+        onPick: (i) => { d.ref = refs[i]; renderTaskPanel(); },
+        sheetInfo: S.sheetFor === curSrc ? S.sheetInfo : null,
+        onSplit: refs.some((r) => /\/view_\d+\.png$/.test(r)) ? null : split,   // уже разрезан — просто выбрать вид
+        splitting: S.splitting,
+      }),
       genBlock(d, (p) => { Object.assign(d, p); draw(); }),
       el('button', {
         class: 'btn accent wide', style: 'margin-top:10px',
+        disabled: sheetN >= 2,                  // с листа генератор слепит несколько фигур
+        title: sheetN >= 2 ? t('gen.sheet.blocked', { n: sheetN }) : '',
         onclick: async () => {
           const m = genMeta(d.model);
           if (!confirm(t('gen.confirm', { name: m.label, price: money(price) }))) return;
-          try { await api(`/tasks/${tk.id}/generate`, { method: 'POST', body: d }); await refreshTask(); } catch (e) { toast(errText(e), true); }
+          try { await api(`/tasks/${tk.id}/generate`, { method: 'POST', body: { ...d, ref: cur } }); await refreshTask(); } catch (e) { toast(errText(e), true); }
         },
       }, t(st === 'done' ? 'gen.again' : 'gen.run', { price: money(price) })));
     draw();
-    if (st === 'done') card.append(el('details', {}, el('summary', { class: 'muted' }, t('gen.againSummary')), box));
+    // Раскрытый блок остаётся раскрытым: панель перерисовывается при каждом изменении задачи.
+    if (st === 'done') card.append(el('details', { open: S.genOpen, ontoggle: (e) => { S.genOpen = e.currentTarget.open; } }, el('summary', { class: 'muted' }, t('gen.againSummary')), box));
     else card.append(box);
   }
   return card;
@@ -637,10 +797,12 @@ async function selectTask(id) {
   S.framesKey = '';
   S.autoFollow = true;
   S.genDraft = null;
+  S.genOpen = false;
   renderTasks();
   if (!id) {
     renderPanel();
     renderDock();
+    renderProcess();
     return;
   }
   await refreshTask(true);
@@ -663,7 +825,7 @@ async function refreshTask(first = false) {
 
   // Панель перерисовываем целиком только когда поменялось её устройство —
   // иначе опрос сбрасывал бы набранный текст.
-  const panelKey = JSON.stringify([tk.running, tk.agent, tk.state, tk.gen?.state, tk.gen?.files, tk.media?.spec, tk.spent_usd, tk.limit5h]);
+  const panelKey = JSON.stringify([tk.running, tk.agent, tk.state, tk.gen?.state, tk.gen?.files, tk.media?.spec, tk.spent_usd, tk.limit5h, tk.refs]);
   if (first || panelKey !== lastPanelKey) {
     const draft = $('#msg')?.value;
     lastPanelKey = panelKey;
@@ -673,6 +835,7 @@ async function refreshTask(first = false) {
     renderFeed();
   }
   renderDock();
+  renderProcess();
 
   // Новая модель задачи — сразу в окно, пока человек сам ничего не выбрал.
   const newest = tk.media?.models?.[0]?.path;
@@ -711,6 +874,7 @@ function renderAll() {
   renderModelInfo();
   renderPanel();
   renderDock();
+  renderProcess();
 }
 onLangChange(renderAll);
 

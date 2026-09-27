@@ -388,8 +388,13 @@ async function handler(req, res) {
 }
 
 // После перезапуска: агент прошлого сервера не наш — снять «идёт»; генерации — дождаться.
+// Но если процесс агента жив или ход только стартует (Blender ещё поднимается), —
+// значит, на этой папке работает другая копия студии: её ход не трогаем.
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 function recover() {
   for (const t of listTasks()) {
+    const fresh = t.turn_started_at && Date.now() / 1000 - t.turn_started_at < 60 && !t.agent_pid;
+    if (t.agent_state === 'running' && ((t.agent_pid && alive(t.agent_pid)) || fresh)) continue;
     if (t.agent_state === 'running') {
       patchTask(t.id, (x) => { x.agent_state = 'waiting'; });
       addEvent(t.id, { kind: 'system', key: 'ev.restarted' });

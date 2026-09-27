@@ -167,7 +167,8 @@ export function runTurn(id, message) {
   });
   proc.stdin.end(message);                  // промпт через stdin: списки флагов его не съедят
   running.set(id, proc);
-  patchTask(id, (t) => { t.agent_state = 'running'; t.turns = (t.turns || 0) + 1; t.billing = settings().claude.mode; });
+  // Номер процесса — в задачу: другая копия студии на той же папке увидит, что ход жив.
+  patchTask(id, (t) => { t.agent_state = 'running'; t.agent_pid = proc.pid; t.turns = (t.turns || 0) + 1; t.billing = settings().claude.mode; });
 
   const rawLog = fs.createWriteStream(path.join(tasksDir(), id, 'agent.jsonl'), { flags: 'a' });
   let buf = '';
@@ -197,7 +198,7 @@ export function runTurn(id, message) {
         ? { kind: 'system', key: 'ev.stopped' }
         : { kind: 'error', key: 'ev.crashed', params: { code, tail: stderr.trim().split('\n').slice(-3).join(' ') } });
     }
-    patchTask(id, (t) => { t.agent_state = 'waiting'; });
+    patchTask(id, (t) => { t.agent_state = 'waiting'; delete t.agent_pid; });
   });
   proc.on('error', (e) => {
     running.delete(id);

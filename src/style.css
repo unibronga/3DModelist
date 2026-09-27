@@ -884,7 +884,7 @@ kbd {
 .tools-layer { position: absolute; inset: 0; zoom: var(--ui); pointer-events: none; z-index: 3; }
 .tools-layer > * { pointer-events: auto; }
 .rail {
-  position: absolute; top: 14px; right: 14px;
+  position: absolute; top: 14px; right: 14px; z-index: 2;   /* над развёрнутым референсом */
   display: flex; flex-direction: column; gap: 4px; padding: 5px;
   background: var(--glass); backdrop-filter: blur(8px);
   border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
@@ -920,17 +920,31 @@ kbd {
 .icon-mini:hover { background: var(--btn-hover-bg); color: var(--btn-hover-fg); }
 
 .refpanel {
-  position: absolute; min-width: 180px; min-height: 160px; max-width: 90%; max-height: 90%;
+  position: absolute; min-width: 200px; min-height: 180px;
   display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: var(--shadow); overflow: hidden; resize: both;
+  border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); overflow: hidden;
 }
-.ref-head { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 10px; cursor: move; border-bottom: 1px solid var(--line); user-select: none; }
+/* само окно мышь не ловит: сквозь прозрачную середину видно и можно крутить модель */
+.tools-layer > .refpanel { pointer-events: none; }
+.refpanel > * { pointer-events: auto; }
+.refpanel.through .ref-stage { pointer-events: none; }
+.ref-head { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 10px; cursor: move; border-bottom: 1px solid var(--line); user-select: none; background: var(--panel); }
 .ref-title { flex: 1; font-weight: 650; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ref-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; cursor: grab; background: var(--panel-2); }
+.ref-stage.see { background: transparent; }
 .ref-stage:active { cursor: grabbing; }
 .ref-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transform-origin: center; user-select: none; pointer-events: none; }
-.ref-foot { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; padding: 6px 10px 12px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); }
+.ref-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 7px 22px 8px 10px; font-size: 12px; color: var(--text-2); border-top: 1px solid var(--line); background: var(--panel); }
+.ref-op { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 150px; }
+.ref-op .range { flex: 1; }
+.ref-through { align-items: center; white-space: nowrap; }
+.ref-through input { margin-top: 0; }
+.ref-grip {
+  position: absolute; right: 1px; bottom: 1px; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0 46%, var(--text-3) 46% 54%, transparent 54% 66%, var(--text-3) 66% 74%, transparent 74% 86%, var(--text-3) 86% 94%, transparent 94%);
+  border-bottom-right-radius: 10px;
+}
 
 .partspanel { width: 270px; top: 110px; max-height: calc(100% - 124px); padding: 10px 8px 8px; }   /* ниже строки вида и строки размеров */
 .parts-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; }

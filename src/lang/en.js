@@ -469,5 +469,10 @@ export default {
   "light.power": "Strength",
   "light.angle": "Rotation",
   "light.spin": "Spin the model",
-  "light.reset": "Reset"
+  "light.reset": "Reset",
+  "ref.full": "Fill the view",
+  "ref.restore": "Restore size",
+  "ref.through": "Rotate the model through the picture",
+  "ref.through.hint": "The mouse goes to the model: line it up with the reference. Turn off to move and zoom the picture itself",
+  "ref.resize": "Drag to resize"
 };

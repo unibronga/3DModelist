@@ -469,5 +469,10 @@ export default {
   "light.power": "Stärke",
   "light.angle": "Drehung",
   "light.spin": "Modell drehen",
-  "light.reset": "Zurücksetzen"
+  "light.reset": "Zurücksetzen",
+  "ref.full": "Ganzes Fenster",
+  "ref.restore": "Größe zurück",
+  "ref.through": "Modell durch das Bild drehen",
+  "ref.through.hint": "Die Maus geht ans Modell: richte es an der Referenz aus. Aus – um das Bild selbst zu verschieben und zu zoomen",
+  "ref.resize": "Ziehen, um die Größe zu ändern"
 };

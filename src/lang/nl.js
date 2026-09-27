@@ -470,5 +470,10 @@ export default {
   "light.power": "Sterkte",
   "light.angle": "Draaiing",
   "light.spin": "Model laten draaien",
-  "light.reset": "Herstellen"
+  "light.reset": "Herstellen",
+  "ref.full": "Hele venster",
+  "ref.restore": "Grootte terug",
+  "ref.through": "Model draaien door de afbeelding heen",
+  "ref.through.hint": "De muis gaat naar het model: lijn het uit met de referentie. Uit om de afbeelding zelf te verschuiven en te zoomen",
+  "ref.resize": "Sleep om het formaat te wijzigen"
 };

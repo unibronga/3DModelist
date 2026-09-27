@@ -41,6 +41,8 @@ export class Tools {
     this.refView = { k: 1, x: 0, y: 0 };
     this.refOpacity = load('refOpacity', 1);
     this.refBox = load('refBox', { left: 14, top: 110, width: 300, height: 360 });   // ниже строки вида и размеров
+    this.refThrough = load('refThrough', false);
+    this.refFull = null;              // прежнее место окна, пока оно развёрнуто на всё поле
 
     this.rail = el('div', { class: 'rail' });
     this.pop = el('div', { class: 'rail-pop', hidden: true });
@@ -51,7 +53,6 @@ export class Tools {
 
     viewer.setLight(this.state.light);
     viewer.onParts = () => { if (this.state.parts) this.drawParts(); };
-    new ResizeObserver(() => this.saveRefBox()).observe(this.refPanel);
     document.addEventListener('pointerdown', (e) => {
       if (this.open && !this.pop.contains(e.target) && !this.rail.contains(e.target)) { this.open = null; this.render(); }
     });
@@ -66,6 +67,7 @@ export class Tools {
 
   toggle(name, on = !this.state[name]) {
     this.state[name] = on;
+    this.open = null;                   // окошко ракурсов/света закрывается при любом другом инструменте
     if (name === 'grid') { this.viewer.setGrid(on); keep('grid', on); }
     if (name === 'human') { this.viewer.setHuman(on); keep('human', on); }
     if (name === 'ref') { this.refIdx = Math.min(this.refIdx, Math.max(0, this.refs().length - 1)); }
@@ -123,22 +125,24 @@ export class Tools {
   }
 
   // ── референс поверх окна ────────────────────────────────────────────────
+  // Прозрачность убирает и подложку: модель видна сквозь картинку. «Сквозь
+  // картинку» — мышь проходит к модели (крутить и приближать её под
+  // референсом); выключено — мышь двигает и приближает саму картинку.
   drawRef() {
     const list = this.refs();
     const show = this.state.ref && list.length > 0;
     this.refPanel.hidden = !show;
     if (!show) return;
     const i = Math.min(this.refIdx, list.length - 1);
-    Object.assign(this.refPanel.style, {
-      left: this.refBox.left + 'px', top: this.refBox.top + 'px',
-      width: this.refBox.width + 'px', height: this.refBox.height + 'px',
-    });
+    this.placeRef();
+    this.refPanel.classList.toggle('through', this.refThrough);
     const img = el('img', { src: list[i], draggable: 'false' });
     const stage = el('div', { class: 'ref-stage' }, img);
     const applyView = () => {
       const v = this.refView;
       img.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
-      stage.style.opacity = this.refOpacity;
+      img.style.opacity = this.refOpacity;
+      stage.classList.toggle('see', this.refOpacity < 0.99);
     };
     // Колесо — масштаб к курсору, перетаскивание — сдвиг, двойной щелчок — сброс.
     stage.addEventListener('wheel', (e) => {
@@ -148,11 +152,10 @@ export class Tools {
       const k = uiScale();
       const cx = (e.clientX - r.left - r.width / 2) / k;
       const cy = (e.clientY - r.top - r.height / 2) / k;
-      const k2 = Math.min(8, Math.max(1, v.k * Math.exp(-e.deltaY * 0.0015)));
+      const k2 = Math.min(8, Math.max(0.3, v.k * Math.exp(-e.deltaY * 0.0015)));
       v.x = cx - (cx - v.x) * (k2 / v.k);
       v.y = cy - (cy - v.y) * (k2 / v.k);
       v.k = k2;
-      if (k2 === 1) { v.x = 0; v.y = 0; }
       applyView();
     }, { passive: false });
     drag(stage, (dx, dy) => { this.refView.x += dx; this.refView.y += dy; applyView(); });
@@ -163,29 +166,62 @@ export class Tools {
       el('span', { class: 'ref-title' }, t('ref.title'), list.length > 1 ? ` · ${i + 1}/${list.length}` : ''),
       list.length > 1 && el('button', { class: 'icon-mini', title: '←', onclick: () => go(-1) }, '‹'),
       list.length > 1 && el('button', { class: 'icon-mini', title: '→', onclick: () => go(1) }, '›'),
+      el('button', { class: 'icon-mini', title: this.refFull ? t('ref.restore') : t('ref.full'), onclick: () => this.toggleRefFull() }, this.refFull ? '⤡' : '⤢'),
       el('button', { class: 'icon-mini', title: t('common.close'), onclick: () => this.toggle('ref', false) }, '✕'));
     drag(head, (dx, dy) => {
       this.refBox.left = Math.max(0, this.refBox.left + dx);
       this.refBox.top = Math.max(0, this.refBox.top + dy);
-      this.refPanel.style.left = this.refBox.left + 'px';
-      this.refPanel.style.top = this.refBox.top + 'px';
-    }, () => keep('refBox', this.refBox));
-    const foot = el('label', { class: 'ref-foot', title: t('ref.opacity.hint') },
-      el('span', {}, t('ref.opacity')),
-      el('input', { type: 'range', class: 'range', min: 0.15, max: 1, step: 0.05, value: this.refOpacity,
-        oninput: (e) => { this.refOpacity = Number(e.target.value); applyView(); keep('refOpacity', this.refOpacity); } }));
-    this.refPanel.replaceChildren(head, stage, foot);
+      this.placeRef();
+    }, () => this.saveRefBox());
+    const foot = el('div', { class: 'ref-foot' },
+      el('label', { class: 'ref-op', title: t('ref.opacity.hint') },
+        el('span', {}, t('ref.opacity')),
+        el('input', { type: 'range', class: 'range', min: 0.1, max: 1, step: 0.05, value: this.refOpacity,
+          oninput: (e) => { this.refOpacity = Number(e.target.value); applyView(); keep('refOpacity', this.refOpacity); } })),
+      el('label', { class: 'check ref-through', title: t('ref.through.hint') },
+        el('input', { type: 'checkbox', checked: this.refThrough, onchange: (e) => {
+          this.refThrough = e.target.checked;
+          keep('refThrough', this.refThrough);
+          this.refPanel.classList.toggle('through', this.refThrough);
+        } }),
+        el('span', {}, t('ref.through'))));
+    // Уголок справа внизу — тянуть размер; окно можно растянуть на всё поле модели.
+    const grip = el('div', { class: 'ref-grip', title: t('ref.resize') });
+    drag(grip, (dx, dy) => {
+      const L = this.layer;
+      this.refBox.width = Math.max(200, Math.min(L.clientWidth - this.refBox.left, this.refBox.width + dx));
+      this.refBox.height = Math.max(180, Math.min(L.clientHeight - this.refBox.top, this.refBox.height + dy));
+      this.placeRef();
+    }, () => this.saveRefBox());
+    this.refPanel.replaceChildren(head, stage, foot, grip);
     applyView();
   }
 
+  placeRef() {
+    Object.assign(this.refPanel.style, {
+      left: this.refBox.left + 'px', top: this.refBox.top + 'px',
+      width: this.refBox.width + 'px', height: this.refBox.height + 'px',
+    });
+  }
+
+  // На всё поле модели (под строкой вида, левее колонки инструментов) и обратно.
+  toggleRefFull() {
+    if (this.refFull) {
+      this.refBox = this.refFull;
+      this.refFull = null;
+    } else {
+      this.refFull = { ...this.refBox };
+      const L = this.layer;
+      this.refBox = { left: 8, top: 56, width: L.clientWidth - 8 - 60, height: L.clientHeight - 56 - 8 };
+    }
+    this.drawRef();
+  }
+
+  // Помним обычный размер и место, а не «на всё поле».
   saveRefBox() {
-    if (this.refPanel.hidden) return;
-    const w = this.refPanel.offsetWidth;
-    const h = this.refPanel.offsetHeight;
-    if (!w || !h) return;
-    this.refBox.width = w;
-    this.refBox.height = h;
+    this.refFull = null;
     keep('refBox', this.refBox);
+    this.drawRef();
   }
 
   // ── части модели ────────────────────────────────────────────────────────

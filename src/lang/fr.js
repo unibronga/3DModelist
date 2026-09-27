@@ -470,5 +470,10 @@ export default {
   "light.power": "Intensité",
   "light.angle": "Rotation",
   "light.spin": "Faire tourner le modèle",
-  "light.reset": "Réinitialiser"
+  "light.reset": "Réinitialiser",
+  "ref.full": "Toute la vue",
+  "ref.restore": "Taille d’origine",
+  "ref.through": "Tourner le modèle à travers l’image",
+  "ref.through.hint": "La souris passe au modèle : alignez-le sur la référence. Désactivez pour déplacer et zoomer l’image elle-même",
+  "ref.resize": "Glissez pour redimensionner"
 };

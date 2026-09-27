@@ -469,5 +469,10 @@ export default {
   "light.power": "Intensidad",
   "light.angle": "Giro",
   "light.spin": "Girar el modelo",
-  "light.reset": "Restablecer"
+  "light.reset": "Restablecer",
+  "ref.full": "Toda la vista",
+  "ref.restore": "Tamaño anterior",
+  "ref.through": "Girar el modelo a través de la imagen",
+  "ref.through.hint": "El ratón pasa al modelo: alinéalo con la referencia. Desactívalo para mover y ampliar la imagen",
+  "ref.resize": "Arrastra para cambiar el tamaño"
 };

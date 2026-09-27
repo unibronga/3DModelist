@@ -250,10 +250,11 @@ function modelNote(id) {
   return f ? t('model.note.' + f) : t('model.note.custom');
 }
 
-function agentBlock(agent, onChange) {
+function agentBlock(agent, onChange, what) {
   const billing = H.health?.claude?.mode === 'api' ? t('billing.api') : t('billing.sub');
   return el('div', { class: 'card' },
     el('div', { class: 'card-h' }, t('agents.title'), el('span', { class: 'badge' }, billing)),
+    what && el('div', { class: 'muted' }, what),
     el('div', { class: 'agent-row' },
       el('span', { class: 'muted' }, t('agents.modeler')),
       el('div', {}, modelSelect(agent.model, { onChange: (v) => onChange({ model: v }) }),
@@ -405,7 +406,7 @@ function renderNewForm() {
         ], d.route, (v) => { d.route = v; renderPanel(); }, 'full')),
       isGen ? formSource(d) : null,
       isGen ? genBlock(d.gen, (p) => { Object.assign(d.gen, p); renderPanel(); }) : null,
-      agentBlock(d.agent, (p) => { Object.assign(d.agent, p); renderPanel(); }),
+      agentBlock(d.agent, (p) => { Object.assign(d.agent, p); renderPanel(); }, t(isGen ? 'agents.afterGen' : 'agents.build')),
     ),
     el('div', { class: 'panel-foot' },
       el('div', { class: 'cost' }, t('agents.title'), el('b', {}, H.health?.claude?.mode === 'api' ? t('billing.api') : t('billing.sub'))),
@@ -581,8 +582,16 @@ function renderTaskPanel() {
 
   const blocks = [refs];
   if (tk.media?.spec) blocks.push(el('button', { class: 'btn wide', onclick: () => openDoc(tk.media.spec) }, t('task.openSpec')));
+  // Тот же выбор, что в форме: кто строит форму. Сменить можно и потом.
+  blocks.push(el('div', { class: 'field' },
+    el('div', { class: 'label' }, t('form.route')),
+    segment([
+      ['script', t('route.script'), t('route.script.hint')],
+      ['generator', t('route.generator'), t('route.generator.hint')],
+    ], tk.route, (v) => { if (!running && v !== tk.route) patch({ route: v }); }, 'full')));
   if (tk.route === 'generator') blocks.push(genCard(tk));
-  blocks.push(agentBlock(tk.agent, (p) => patch({ agent: { ...tk.agent, ...p } })));
+  blocks.push(agentBlock(tk.agent, (p) => patch({ agent: { ...tk.agent, ...p } }),
+    t(tk.route === 'generator' ? 'agents.afterGen' : 'agents.build')));
   blocks.push(el('div', { class: 'feed', id: 'feed' }));
 
   const ta = el('textarea', {
@@ -681,12 +690,9 @@ function genCard(tk) {
         },
       }, t(st === 'done' ? 'gen.again' : 'gen.run', { price: money(price) })));
     draw();
-    // После готовой генерации — настоящая кнопка «Сгенерировать ещё вариант»
-    // (мелкую раскрывашку владелец не заметил). Лист на входе — раскрыто сразу,
-    // чтобы предупреждение и «Разрезать на виды» были видны без поиска.
-    if (st === 'done' && !S.genOpen && sheetN < 2) {
-      card.append(el('button', { class: 'btn wide', onclick: () => { S.genOpen = true; renderTaskPanel(); } }, t('gen.againSummary')));
-    } else card.append(box);
+    // Выбор картинки и генератора — виден сразу: спрятанный за кнопкой, он
+    // терялся (владелец 27.09: «почему нет выбора модели?»).
+    card.append(box);
   }
   return card;
 }

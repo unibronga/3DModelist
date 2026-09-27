@@ -246,6 +246,8 @@ async function api(req, res, url) {
           if (a.critic === 'off' || validModel(a.critic)) x.agent.critic = a.critic;
         }
         if (b.state === 'done' || b.state === 'open') x.state = b.state;
+        // Путь можно сменить и у созданной задачи — пока агент не работает.
+        if ((b.route === 'script' || b.route === 'generator') && busyTask() !== id) x.route = b.route;
         if (typeof b.brief === 'string') x.brief = b.brief;
       });
       return send(res, 200, taskView(t));

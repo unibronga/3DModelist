@@ -400,5 +400,7 @@ export default {
   "about.source": "Broncode",
   "about.license": "Licentie",
   "about.builtWith": "Gebouwd met",
-  "about.licenseNote": "Vrije opensourcesoftware: gratis gebruiken, aanpassen en delen, met vermelding van de auteur."
+  "about.licenseNote": "Vrije opensourcesoftware: gratis gebruiken, aanpassen en delen, met vermelding van de auteur.",
+  "agents.afterGen": "Na de generator maakt de agent het model af: schaal in meters, op de grond, opschonen, bestanden opleveren.",
+  "agents.build": "De agent bouwt het model op basis van de referentie via script in Blender."
 };

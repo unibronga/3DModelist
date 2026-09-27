@@ -399,5 +399,7 @@ export default {
   "about.source": "Quellcode",
   "about.license": "Lizenz",
   "about.builtWith": "Gebaut mit",
-  "about.licenseNote": "Freie Open-Source-Software: kostenlos nutzen, ändern und weitergeben, mit Nennung des Autors."
+  "about.licenseNote": "Freie Open-Source-Software: kostenlos nutzen, ändern und weitergeben, mit Nennung des Autors.",
+  "agents.afterGen": "Nach dem Generator vollendet der Agent das Modell: Maßstab in Metern, auf den Boden, Aufräumen, Dateiübergabe.",
+  "agents.build": "Der Agent baut das Modell nach der Referenz per Skript in Blender."
 };

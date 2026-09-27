@@ -400,5 +400,7 @@ export default {
   "about.source": "Code source",
   "about.license": "Licence",
   "about.builtWith": "Construit avec",
-  "about.licenseNote": "Logiciel libre et open source : utilisez, modifiez et partagez-le gratuitement en conservant la mention de l'auteur."
+  "about.licenseNote": "Logiciel libre et open source : utilisez, modifiez et partagez-le gratuitement en conservant la mention de l'auteur.",
+  "agents.afterGen": "Après le générateur, l'agent finit le modèle : échelle en mètres, posé au sol, nettoyage, livraison des fichiers.",
+  "agents.build": "L'agent construit le modèle d'après la référence par script dans Blender."
 };

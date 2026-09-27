@@ -399,5 +399,7 @@ export default {
   "about.source": "Source code",
   "about.license": "License",
   "about.builtWith": "Built with",
-  "about.licenseNote": "Free, open-source software: use, change and share it at no cost, keeping the author's credit."
+  "about.licenseNote": "Free, open-source software: use, change and share it at no cost, keeping the author's credit.",
+  "agents.afterGen": "After the generator, the agent finishes the model: real-world scale, on the floor, cleanup, file delivery.",
+  "agents.build": "The agent builds the model from the reference by script in Blender."
 };

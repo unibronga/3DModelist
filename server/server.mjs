@@ -14,7 +14,9 @@ import {
   ws, STAGES, slugify, freeSlug, newId, loadTask, saveTask, patchTask, listTasks,
   addEvent, readEvents, pipeStatus,
 } from './store.mjs';
-import { AGENT_MODELS, EFFORTS, runTurn, stopTurn, stopAll, busyTask, firstPrompt, testClaude } from './agent.mjs';
+import { EFFORTS, runTurn, stopTurn, stopAll, busyTask, firstPrompt, testClaude } from './agent.mjs';
+import { versions, validModel, canModel } from './models.mjs';
+import { UserError, errBody } from './errors.mjs';
 import { GENERATORS, genById, submit, watch, testFal, falKeySource } from './fal.mjs';
 import { library, taskMedia, refsTree } from './library.mjs';
 import * as settings from './settings.mjs';
@@ -96,7 +98,7 @@ const IMG_RE = /^data:image\/(png|jpeg|jpg|webp);base64,/;
 function createTask(body) {
   const ROOT = ws();
   const name = String(body.name || '').trim();
-  if (!name) throw new Error('нужно название модели');
+  if (!name) throw new UserError('needName');
   const slug = freeSlug(slugify(body.slug || name));
   const id = newId();
   const refDir = path.join(ROOT, 'refs', slug);
@@ -125,16 +127,16 @@ function createTask(body) {
     route: body.route === 'generator' ? 'generator' : 'script',
     refs,
     agent: {
-      model: AGENT_MODELS.some((x) => x.id === a.model && x.modeler) ? a.model : 'opus',
+      model: canModel(a.model) ? a.model : 'opus',
       effort: EFFORTS.includes(a.effort) ? a.effort : 'high',
-      critic: a.critic === 'off' ? 'off' : (AGENT_MODELS.some((x) => x.id === a.critic) ? a.critic : 'opus'),
+      critic: a.critic === 'off' ? 'off' : (validModel(a.critic) ? a.critic : 'opus'),
     },
     created_at: Date.now() / 1000,
     agent_state: 'idle',
     state: 'open',
     spent_usd: 0,
   });
-  addEvent(id, { kind: 'system', text: `Задача создана. Папка модели: ${slug}. Референсов: ${refs.length}.` });
+  addEvent(id, { kind: 'system', key: 'ev.created', params: { slug, n: refs.length } });
   return task;
 }
 
@@ -159,7 +161,7 @@ async function api(req, res, url) {
     return send(res, 200, {
       version: VERSION,
       stages: STAGES,
-      agents: AGENT_MODELS,
+      models: await versions(),
       efforts: EFFORTS,
       generators: GENERATORS.map((g) => ({
         id: g.id, label: g.label, tag: g.tag, detail: g.detail,
@@ -174,17 +176,20 @@ async function api(req, res, url) {
   if (parts[1] === 'settings') {
     if (m === 'GET') return send(res, 200, settings.publicView());
     if (m === 'PATCH') {
-      if (busyTask()) return send(res, 409, { error: 'агент работает — настройки меняются после его хода' });
+      if (busyTask()) return send(res, 409, errBody(new UserError('settingsBusy')));
       settings.update(await readBody(req));
       return send(res, 200, settings.publicView());
     }
   }
   if (parts[1] === 'check' && m === 'POST') {
-    if (parts[2] === 'claude') return send(res, 200, await testClaude());
+    if (parts[2] === 'claude') {
+      const b = await readBody(req);
+      return send(res, 200, await testClaude(validModel(b.model) ? b.model : 'haiku'));
+    }
     if (parts[2] === 'fal') return send(res, 200, await testFal());
   }
   if (parts[1] === 'workspace' && parts[2] === 'prepare' && m === 'POST') {
-    try { return send(res, 200, workspace.prepare(ws())); } catch (e) { return send(res, 400, { error: e.message }); }
+    try { return send(res, 200, workspace.prepare(ws())); } catch (e) { return send(res, 400, errBody(e)); }
   }
   if (parts[1] === 'blender') {
     if (!parts[2] && m === 'GET') return send(res, 200, ws() ? await blender.ping() : { online: false });
@@ -194,14 +199,14 @@ async function api(req, res, url) {
     }
     if (parts[2] === 'launch' && m === 'POST') {
       const b = await readBody(req);
-      try { return send(res, 200, await blender.launch({ background: !!b.background })); } catch (e) { return send(res, 400, { error: e.message }); }
+      try { return send(res, 200, await blender.launch({ background: !!b.background })); } catch (e) { return send(res, 400, errBody(e)); }
     }
   }
 
   // Дальше — всё, что живёт в рабочей папке: без неё работать не с чем.
   if (!workspace.status(ws()).exists) {
     if (parts[1] === 'library' || parts[1] === 'refs' || (parts[1] === 'tasks' && !parts[2] && m === 'GET')) return send(res, 200, []);
-    return send(res, 412, { error: 'сначала выбери рабочую папку в настройках' });
+    return send(res, 412, errBody(new UserError('noWorkspace')));
   }
   if (parts[1] === 'library' && m === 'GET') return send(res, 200, library());
   if (parts[1] === 'refs' && m === 'GET') return send(res, 200, refsTree());
@@ -212,6 +217,7 @@ async function api(req, res, url) {
       return send(res, 200, listTasks().map((t) => ({
         id: t.id, name: t.name, slug: t.slug, route: t.route, state: t.state,
         agent_state: busyTask() === t.id || starting === t.id ? 'running' : t.agent_state,
+        agent_model: t.agent?.model,
         created_at: t.created_at, spent_usd: t.spent_usd || 0, gen_state: t.gen?.state || null,
       })));
     }
@@ -220,7 +226,7 @@ async function api(req, res, url) {
       return send(res, 200, taskView(task));
     }
     const task = loadTask(id);
-    if (!task) return send(res, 404, { error: 'нет такой задачи' });
+    if (!task) return send(res, 404, errBody(new UserError('noTask')));
     const sub = parts[3];
 
     if (!sub && m === 'GET') return send(res, 200, taskView(task));
@@ -229,9 +235,9 @@ async function api(req, res, url) {
       const t = patchTask(id, (x) => {
         if (b.agent) {
           const a = b.agent;
-          if (AGENT_MODELS.some((q) => q.id === a.model && q.modeler)) x.agent.model = a.model;
+          if (canModel(a.model)) x.agent.model = a.model;
           if (EFFORTS.includes(a.effort)) x.agent.effort = a.effort;
-          if (a.critic === 'off' || AGENT_MODELS.some((q) => q.id === a.critic)) x.agent.critic = a.critic;
+          if (a.critic === 'off' || validModel(a.critic)) x.agent.critic = a.critic;
         }
         if (b.state === 'done' || b.state === 'open') x.state = b.state;
         if (typeof b.brief === 'string') x.brief = b.brief;
@@ -248,12 +254,12 @@ async function api(req, res, url) {
       if (!task.agent?.session_id) {
         prompt = firstPrompt(task) + (text ? `\n\nЕщё от человека: ${text}` : '');
       } else {
-        if (!text) return send(res, 400, { error: 'пустое сообщение' });
+        if (!text) return send(res, 400, errBody(new UserError('emptyMessage')));
         prompt = text;
       }
-      if (busyTask() || starting) return send(res, 409, { error: 'агент уже занят другой задачей — Blender у нас один' });
+      if (busyTask() || starting) return send(res, 409, errBody(new UserError('busy')));
       if (text) addEvent(id, { kind: 'user', text });
-      else addEvent(id, { kind: 'system', text: 'Агент запущен.' });
+      else addEvent(id, { kind: 'system', key: 'ev.agentStarted' });
       // Blender поднимаем сами и без окна — это может занять до ~10 с,
       // поэтому отвечаем сразу, а ход агента стартует следом.
       starting = id;
@@ -261,11 +267,11 @@ async function api(req, res, url) {
       (async () => {
         try {
           const bl = await blender.ensure();
-          if (bl.started) addEvent(id, { kind: 'system', text: 'Blender запущен без окна.' });
-          if (!bl.online) addEvent(id, { kind: 'error', text: bl.error || 'Blender не запустился' });
+          if (bl.started) addEvent(id, { kind: 'system', key: 'ev.blenderStarted' });
+          if (!bl.online) addEvent(id, { kind: 'error', key: 'err.' + (bl.code || 'blNoAnswer') });
           runTurn(id, prompt);
         } catch (e) {
-          addEvent(id, { kind: 'error', text: e.message });
+          addEvent(id, e.code ? { kind: 'error', key: 'err.' + e.code, params: e.params } : { kind: 'error', text: e.message });
           patchTask(id, (t) => { t.agent_state = 'waiting'; });
         } finally {
           starting = null;
@@ -276,8 +282,8 @@ async function api(req, res, url) {
     if (sub === 'stop' && m === 'POST') return send(res, 200, { ok: stopTurn(id) });
     if (sub === 'generate' && m === 'POST') {
       const b = await readBody(req);
-      if (!genById(b.model)) return send(res, 400, { error: 'неизвестный генератор' });
-      try { await submit(id, b); } catch (e) { return send(res, 400, { error: e.message }); }
+      if (!genById(b.model)) return send(res, 400, errBody(new UserError('unknownGen')));
+      try { await submit(id, b); } catch (e) { return send(res, 400, errBody(e)); }
       return send(res, 200, taskView(loadTask(id)));
     }
   }
@@ -306,7 +312,7 @@ async function handler(req, res) {
     if (!fs.existsSync(path.join(DIST, 'index.html'))) return send(res, 200, 'Страница не собрана: npm run build', 'text/plain; charset=utf-8');
     return sendFile(res, fs.existsSync(abs) ? abs : path.join(DIST, 'index.html'));
   } catch (e) {
-    return send(res, 500, { error: String(e.message || e) });
+    return send(res, e.code ? 400 : 500, errBody(e));
   }
 }
 
@@ -315,7 +321,7 @@ function recover() {
   for (const t of listTasks()) {
     if (t.agent_state === 'running') {
       patchTask(t.id, (x) => { x.agent_state = 'waiting'; });
-      addEvent(t.id, { kind: 'system', text: 'Студия перезапущена — ход агента прерван. Напиши агенту, чтобы продолжить.' });
+      addEvent(t.id, { kind: 'system', key: 'ev.restarted' });
     }
     if (['queued', 'running'].includes(t.gen?.state)) watch(t.id);
   }

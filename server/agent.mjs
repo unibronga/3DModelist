@@ -16,15 +16,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { ws, addEvent, patchTask, loadTask, tasksDir } from './store.mjs';
 import { load as settings, fullPath, exists } from './settings.mjs';
+import { UserError } from './errors.mjs';
 
-// Кого можно поставить моделистом и критиком. Алиасы CLI ведут на последние
-// модели семейства. Haiku моделистом не ставится: режим разрешений auto у
-// него не включается, и без окна он упирается в запреты.
-export const AGENT_MODELS = [
-  { id: 'opus', label: 'Opus', note: 'точнее всех, основной выбор', modeler: true },
-  { id: 'sonnet', label: 'Sonnet', note: 'быстрее и экономнее', modeler: true },
-  { id: 'haiku', label: 'Haiku', note: 'только критиком: быстрый взгляд', modeler: false },
-];
+// Модели — в models.mjs: «последняя» (fable/opus/sonnet/haiku) или версия.
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 const running = new Map();          // id задачи → процесс
@@ -42,7 +36,7 @@ function claudeEnv() {
   for (const [k, v] of Object.entries(process.env)) if (ENV_KEEP.test(k)) env[k] = v;
   Object.assign(env, { PATH: fullPath(), PIPE_NO_OPEN: '1', BLENDER_MCP_PORT: String(s.blender.port) });
   if (s.claude.mode === 'api') {
-    if (!s.claude.apiKey) throw new Error('не задан ключ Anthropic API — Настройки ▸ Claude');
+    if (!s.claude.apiKey) throw new UserError('noApiKey');
     env.ANTHROPIC_API_KEY = s.claude.apiKey;
   }
   if (s.claude.configDir) env.CLAUDE_CONFIG_DIR = s.claude.configDir;
@@ -51,13 +45,17 @@ function claudeEnv() {
 
 function claudeBin() {
   const b = settings().claude.bin;
-  if (!exists(b)) throw new Error('не найден Claude Code (claude) — Настройки ▸ Claude');
+  if (!exists(b)) throw new UserError('noClaude');
   return b;
 }
 
+const LANG_NAMES = { ru: 'русский', en: 'English', de: 'Deutsch', fr: 'français', nl: 'Nederlands', es: 'español', uk: 'українська' };
+
 function systemPrompt() {
-  const s = settings();
-  const lang = s.language === 'en' ? 'Reply to the user in English.' : 'Отвечай человеку по-русски.';
+  const ui = LANG_NAMES[settings().ui?.lang] || 'English';
+  const lang = `Язык ответов: тот, на котором пишет человек (описание задачи, его сообщения). Пока человек
+ничего не написал своими словами — язык его интерфейса: ${ui}. Служебные строки задачи ниже — по-русски,
+на язык ответа они не влияют.`;
   return `Ты работаешь из 3DModelist — локального приложения человека, без терминала.
 Рабочая папка (абсолютный путь, используй его в скриптах): ${ws()}
 Человек видит: твои сообщения — лентой; этапы — с табло tools/pipe; кадры — все PNG,
@@ -74,17 +72,18 @@ function systemPrompt() {
 ${lang}`;
 }
 
-function toolLabel(name, input = {}) {
+// Действие агента для ленты: глагол (переводит страница) + аргумент.
+function toolInfo(name, input = {}) {
   const rel = (p) => (p ? path.relative(ws(), p) || p : '');
   switch (name) {
-    case 'Bash': return input.description || String(input.command || '').slice(0, 90);
-    case 'Read': return 'смотрит ' + rel(input.file_path);
-    case 'Write': return 'пишет ' + rel(input.file_path);
-    case 'Edit': return 'правит ' + rel(input.file_path);
-    case 'Skill': return 'скил ' + (input.skill || '');
-    case 'Agent': case 'Task': return 'агент: ' + (input.description || input.subagent_type || '');
-    case 'Glob': case 'Grep': return 'ищет ' + (input.pattern || '');
-    default: return name.replace(/^mcp__[^_]+__/, '');
+    case 'Bash': return { verb: 'bash', arg: input.description || String(input.command || '').slice(0, 90) };
+    case 'Read': return { verb: 'read', arg: rel(input.file_path) };
+    case 'Write': return { verb: 'write', arg: rel(input.file_path) };
+    case 'Edit': return { verb: 'edit', arg: rel(input.file_path) };
+    case 'Skill': return { verb: 'skill', arg: input.skill || '' };
+    case 'Agent': case 'Task': return { verb: 'agent', arg: input.description || input.subagent_type || '' };
+    case 'Glob': case 'Grep': return { verb: 'search', arg: input.pattern || '' };
+    default: return { verb: 'other', arg: name.replace(/^mcp__[^_]+__/, '') };
   }
 }
 
@@ -129,15 +128,15 @@ export function firstPrompt(task) {
 // Запустить ход агента. message — текст человека (или первый промпт).
 export function runTurn(id, message) {
   const task = loadTask(id);
-  if (!task) throw new Error('нет такой задачи');
-  if (busyTask()) throw new Error('агент уже занят другой задачей — Blender у нас один');
+  if (!task) throw new UserError('noTask');
+  if (busyTask()) throw new UserError('busy');
   const env = claudeEnv();
   const bin = claudeBin();
 
   const first = !task.agent?.session_id;
   if (first) {
     const err = pipeTask(task.name);
-    if (err) addEvent(id, { kind: 'error', text: 'табло этапов не открылось: ' + err });
+    if (err) addEvent(id, { kind: 'error', key: 'ev.pipeFail', params: { msg: err } });
   }
   const a = task.agent || {};
   const args = [
@@ -185,16 +184,15 @@ export function runTurn(id, message) {
     running.delete(id);
     rawLog.end();
     if (signal || (code && !gotResult)) {
-      addEvent(id, {
-        kind: signal ? 'system' : 'error',
-        text: signal ? 'Агент остановлен.' : `Агент упал (код ${code}). ${stderr.trim().split('\n').slice(-3).join(' ')}`,
-      });
+      addEvent(id, signal
+        ? { kind: 'system', key: 'ev.stopped' }
+        : { kind: 'error', key: 'ev.crashed', params: { code, tail: stderr.trim().split('\n').slice(-3).join(' ') } });
     }
     patchTask(id, (t) => { t.agent_state = 'waiting'; });
   });
   proc.on('error', (e) => {
     running.delete(id);
-    addEvent(id, { kind: 'error', text: 'Не запустился claude: ' + e.message });
+    addEvent(id, { kind: 'error', key: 'ev.spawnFail', params: { msg: e.message } });
     patchTask(id, (t) => { t.agent_state = 'waiting'; });
   });
 }
@@ -209,17 +207,17 @@ function handle(id, m) {
   if (m.type === 'assistant' && !m.parent_tool_use_id) {
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text.trim()) addEvent(id, { kind: 'text', text: b.text });
-      if (b.type === 'tool_use') addEvent(id, { kind: 'tool', name: b.name, text: toolLabel(b.name, b.input) });
+      if (b.type === 'tool_use') addEvent(id, { kind: 'tool', name: b.name, ...toolInfo(b.name, b.input) });
     }
     return;
   }
   if (m.type === 'system' && m.subtype === 'api_retry') {
     // 401/403 не пройдут повтором — claude переспрашивает минутами. Сразу стоп и объяснение.
     if (m.error_status === 401 || m.error_status === 403) {
-      addEvent(id, { kind: 'error', text: authError(m.error_status) });
+      addEvent(id, { kind: 'error', ...authError(m.error_status) });
       stopTurn(id);
     } else if (m.attempt === 1) {
-      addEvent(id, { kind: 'system', text: `Сервер Claude ответил ${m.error_status || m.error} — агент повторяет запрос.` });
+      addEvent(id, { kind: 'system', key: 'ev.retry', params: { status: m.error_status || m.error } });
     }
     return;
   }
@@ -236,18 +234,17 @@ function handle(id, m) {
       if (t.billing === 'api') t.spent_usd = (t.spent_usd || 0) + usd;
       t.agent_ms = (t.agent_ms || 0) + (m.duration_ms || 0);
     });
-    addEvent(id, {
-      kind: 'result',
-      error: !!m.is_error,
-      text: m.is_error ? (m.result || 'ход закончился ошибкой') : 'Агент закончил ход — ждёт тебя.',
-    });
+    // Ошибка хода — текст Claude как есть (например, «закончились кредиты»).
+    addEvent(id, m.is_error
+      ? { kind: 'result', error: true, ...(m.result ? { text: m.result } : { key: 'ev.turnError' }) }
+      : { kind: 'result', key: 'ev.turnDone' });
   }
 }
 
+// Отказ во входе: ключ события/ошибки и код для страницы.
 function authError(status) {
-  return settings().claude.mode === 'api'
-    ? `Claude не принял ключ API (${status}). Проверь ключ: Настройки ▸ Claude.`
-    : `Claude не принял вход по подписке (${status}). Открой Терминал, набери claude и в нём /login.`;
+  const code = settings().claude.mode === 'api' ? 'authApi' : 'authSub';
+  return { key: 'ev.' + code, code, params: { status } };
 }
 
 export function stopTurn(id) {
@@ -264,19 +261,19 @@ export function stopAll() {
 
 // Проверка подключения: короткий ход Haiku в пустой папке (без CLAUDE.md
 // рабочей папки). По подписке бесплатно, по ключу — доли цента.
-export function testClaude() {
+export function testClaude(model = 'haiku') {
   return new Promise((resolve) => {
     let env;
     let bin;
-    try { env = claudeEnv(); bin = claudeBin(); } catch (e) { resolve({ ok: false, error: e.message }); return; }
+    try { env = claudeEnv(); bin = claudeBin(); } catch (e) { resolve({ ok: false, error: e.message, code: e.code }); return; }
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'modelist-check-'));
-    const p = spawn(bin, ['-p', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--max-turns', '1'],
+    const p = spawn(bin, ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', '1'],
       { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     p.stdin.end('Ответь одним словом: готов');
     const out = { ok: false };
     let buf = '';
     let err = '';
-    const timer = setTimeout(() => { out.error = out.error || 'claude не ответил за 90 с'; p.kill('SIGTERM'); }, 90000);
+    const timer = setTimeout(() => { if (!out.error) { out.error = 'timeout'; out.code = 'claudeTimeout'; } p.kill('SIGTERM'); }, 90000);
     p.stdout.on('data', (c) => {
       buf += c;
       let nl;
@@ -287,7 +284,8 @@ export function testClaude() {
         try { m = JSON.parse(line); } catch { continue; }
         if (m.type === 'system' && m.subtype === 'init') { out.model = m.model; out.version = m.claude_code_version; out.source = m.apiKeySource; }
         if (m.type === 'system' && m.subtype === 'api_retry' && (m.error_status === 401 || m.error_status === 403)) {
-          out.error = authError(m.error_status);        // повтор не поможет — не ждать минутами
+          const a = authError(m.error_status);          // повтор не поможет — не ждать минутами
+          out.error = a.code; out.code = a.code; out.params = a.params;
           p.kill('SIGTERM');
         }
         if (m.type === 'rate_limit_event') out.limit5h = m.rate_limit_info?.unifiedWindows?.five_hour?.utilization;
@@ -305,7 +303,10 @@ export function testClaude() {
       clearTimeout(timer);
       fs.rmSync(cwd, { recursive: true, force: true });
       // stderr claude — предупреждения (про коннекторы и т.п.), а не причина: берём его последним.
-      if (!out.ok && !out.error) out.error = err.trim().split('\n').filter((l) => !/connectors are disabled/.test(l)).slice(-2).join(' ') || 'claude не ответил';
+      if (!out.ok && !out.error) {
+        out.error = err.trim().split('\n').filter((l) => !/connectors are disabled/.test(l)).slice(-2).join(' ');
+        if (!out.error) out.code = 'claudeNoAnswer';
+      }
       resolve(out);
     });
   });

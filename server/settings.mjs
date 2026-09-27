@@ -17,6 +17,8 @@ export function appHome() {
 
 const FILE = () => path.join(appHome(), 'settings.json');
 
+export const UI_LANGS = ['en', 'de', 'fr', 'nl', 'es', 'uk', 'ru'];
+
 // ── поиск программ ─────────────────────────────────────────────────────────
 const exists = (p) => { try { return !!p && fs.statSync(p).isFile(); } catch { return false; } };
 
@@ -57,7 +59,9 @@ function findBlender() {
 function defaults() {
   return {
     workspace: '',                       // пусто — ещё не выбрана
-    language: 'ru',                      // язык ответов агента
+    // Интерфейс: язык (пусто — по системе), тема (light | dark | system), масштаб.
+    // Агент отвечает на том языке, на котором ему пишут; язык интерфейса — ему подсказка.
+    ui: { lang: '', theme: 'system', scale: 1 },
     onboarded: false,                    // первый запуск пройден (окно приветствия больше не показывать)
     claude: {
       mode: 'subscription',              // subscription | api
@@ -111,7 +115,7 @@ export function publicView() {
   const s = load();
   return {
     workspace: s.workspace,
-    language: s.language,
+    ui: s.ui,
     onboarded: !!s.onboarded,
     claude: { mode: s.claude.mode, bin: s.claude.bin, configDir: s.claude.configDir, apiKey: mask(s.claude.apiKey) },
     fal: { key: mask(s.fal.key) },
@@ -125,7 +129,12 @@ export function publicView() {
 export function update(p = {}) {
   const s = structuredClone(load());
   if (typeof p.workspace === 'string') s.workspace = p.workspace.trim().replace(/^~(?=$|\/)/, os.homedir());
-  if (p.language === 'ru' || p.language === 'en') s.language = p.language;
+  if (p.ui) {
+    if (UI_LANGS.includes(p.ui.lang)) s.ui.lang = p.ui.lang;
+    if (['light', 'dark', 'system'].includes(p.ui.theme)) s.ui.theme = p.ui.theme;
+    const k = Number(p.ui.scale);
+    if (k >= 0.8 && k <= 1.4) s.ui.scale = Math.round(k * 100) / 100;
+  }
   if (typeof p.onboarded === 'boolean') s.onboarded = p.onboarded;
   if (p.claude) {
     const c = p.claude;

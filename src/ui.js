@@ -1,5 +1,7 @@
 // Общие мелочи интерфейса: разметка, запросы к серверу, всплывашки.
 
+import { t, has } from './i18n.js';
+
 export const $ = (s) => document.querySelector(s);
 
 export function el(tag, attrs = {}, ...kids) {
@@ -28,8 +30,19 @@ export async function api(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) {
+    const e = new Error(j.error || r.statusText);
+    e.code = j.code;
+    e.params = j.params;
+    throw e;
+  }
   return j;
+}
+
+// Текст ошибки для человека: по коду — из словаря, иначе как пришёл.
+export function errText(e) {
+  if (e?.code && has('err.' + e.code)) return t('err.' + e.code, e.params);
+  return e?.error || e?.message || String(e);
 }
 
 export function toast(text, err = false) {

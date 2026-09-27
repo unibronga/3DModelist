@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { UserError } from './errors.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // В собранном приложении kit распакован рядом с app.asar — там его видят python и bash.
@@ -44,7 +45,7 @@ export function status(root) {
 }
 
 export function prepare(root) {
-  if (!root) throw new Error('не выбрана рабочая папка');
+  if (!root) throw new UserError('noWorkspace');
   fs.mkdirSync(root, { recursive: true });
   for (const d of FOLDERS) fs.mkdirSync(path.join(root, d), { recursive: true });
   const added = [];

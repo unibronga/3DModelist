@@ -22,6 +22,86 @@
   --shadow: 0 1px 2px rgba(20, 20, 18, 0.06), 0 4px 16px rgba(20, 20, 18, 0.06);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* кнопка-главное действие и «моё» сообщение: тёмные на светлой теме */
+  --primary-bg: #1d1d1b;
+  --primary-bg-hover: #33332f;
+  --primary-fg: #ffffff;
+  --accent-hover: #2f4bc4;
+  --accent-line: #c9d4ff;
+  --stage-1: #f7f7f5;
+  --stage-2: #e9e8e5;
+  --glass: rgba(255, 255, 255, 0.85);
+  --notice-line: #f3dca8;
+  --notice-text: #7a4a00;
+  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --ui: 1;                         /* масштаб интерфейса, задаётся в настройках */
+  color-scheme: light;
+}
+
+/* Тёмная тема: выбрана явно или «как в системе» при тёмной системе. */
+:root[data-theme="dark"] {
+  --bg: #141517;
+  --panel: #1c1d20;
+  --panel-2: #24262a;
+  --line: #2e3035;
+  --line-strong: #3b3e44;
+  --text: #ececea;
+  --text-2: #b4b3ae;
+  --text-3: #86857f;
+  --accent: #7d95ff;
+  --accent-soft: #232a47;
+  --ok: #4cc26a;
+  --ok-soft: #1b3122;
+  --warn: #f0a73a;
+  --warn-soft: #36291a;
+  --bad: #ff6b8e;
+  --bad-soft: #3a1d27;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --primary-bg: #ececea;
+  --primary-bg-hover: #ffffff;
+  --primary-fg: #141517;
+  --accent-hover: #93a7ff;
+  --accent-line: #3b4a8a;
+  --stage-1: #23252a;
+  --stage-2: #15161a;
+  --glass: rgba(28, 29, 32, 0.85);
+  --notice-line: #5a4320;
+  --notice-text: #f6cf8e;
+  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141517;
+    --panel: #1c1d20;
+    --panel-2: #24262a;
+    --line: #2e3035;
+    --line-strong: #3b3e44;
+    --text: #ececea;
+    --text-2: #b4b3ae;
+    --text-3: #86857f;
+    --accent: #7d95ff;
+    --accent-soft: #232a47;
+    --ok: #4cc26a;
+    --ok-soft: #1b3122;
+    --warn: #f0a73a;
+    --warn-soft: #36291a;
+    --bad: #ff6b8e;
+    --bad-soft: #3a1d27;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.3);
+    --primary-bg: #ececea;
+    --primary-bg-hover: #ffffff;
+    --primary-fg: #141517;
+    --accent-hover: #93a7ff;
+    --accent-line: #3b4a8a;
+    --stage-1: #23252a;
+    --stage-2: #15161a;
+    --glass: rgba(28, 29, 32, 0.85);
+    --notice-line: #5a4320;
+    --notice-text: #f6cf8e;
+    --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    color-scheme: dark;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -32,6 +112,7 @@ body {
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  zoom: var(--ui);
 }
 button, input, textarea, select { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
@@ -40,7 +121,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr) 380px;
   grid-template-rows: minmax(0, 1fr);
-  height: 100vh;
+  height: calc(100vh / var(--ui));      /* под zoom высота окна делится на масштаб */
 }
 .app > * { min-height: 0; }
 
@@ -57,10 +138,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .btn:hover { background: var(--panel-2); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
-.btn.primary { background: var(--text); border-color: var(--text); color: #fff; }
-.btn.primary:hover { background: #33332f; }
+.btn.primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-fg); }
+.btn.primary:hover { background: var(--primary-bg-hover); }
 .btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.accent:hover { background: #2f4bc4; }
+.btn.accent:hover { background: var(--accent-hover); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
 .btn.ghost:hover { background: var(--panel-2); }
 .btn.danger { color: var(--bad); }
@@ -85,7 +166,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 500;
   white-space: nowrap;
 }
-.seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: var(--seg-shadow); }
 .seg.full { display: flex; }
 .seg.full button { flex: 1; }
 
@@ -98,7 +179,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--text-2);
   font-weight: 500;
 }
-.chip-btn.on { background: var(--accent-soft); border-color: #c9d4ff; color: var(--accent); }
+.chip-btn.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 
 /* ── левая колонка ─────────────────────────────────────────────────────── */
 .side {
@@ -111,7 +192,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   overflow-y: auto;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 6px; }
-.logo { width: 38px; height: 38px; flex: none; }
+.logo { width: 40px; height: 40px; flex: none; border-radius: 10px; }
 #version { color: var(--text-3); margin-left: 4px; }
 .brand-name { font-weight: 650; font-size: 14px; }
 .brand-sub { color: var(--text-3); font-size: 12px; }
@@ -179,13 +260,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: radial-gradient(ellipse at 50% 40%, #f7f7f5 0%, #e9e8e5 75%);
+  background: radial-gradient(ellipse at 50% 40%, var(--stage-1) 0%, var(--stage-2) 75%);
 }
 .toolbar {
   position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
   z-index: 3;
   display: flex; gap: 8px; align-items: center;
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--glass);
   backdrop-filter: blur(8px);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -196,7 +277,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
   z-index: 3;
   font-size: 12px; color: var(--text-2);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--glass);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 12px;
@@ -204,11 +285,12 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 .model-info:empty { display: none; }
 .viewport { position: relative; flex: 1; min-height: 0; }
-.viewport { overflow: hidden; }
+.viewport { overflow: hidden; zoom: calc(1 / var(--ui)); }   /* 3D — в родном масштабе, иначе мыло */
 /* полотно поверх окна, а не в потоке: иначе ResizeObserver и холст растят друг друга */
 .viewport canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: none; }
 .empty {
   position: absolute; inset: 0;
+  zoom: var(--ui);
   display: grid; place-content: center; text-align: center;
   pointer-events: none;
 }
@@ -216,6 +298,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .empty-sub { color: var(--text-3); margin-top: 4px; }
 .loading {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  zoom: var(--ui);
   background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
   padding: 6px 14px; box-shadow: var(--shadow); color: var(--text-2);
 }
@@ -240,16 +323,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .st .h { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px; }
 .st .n { font-size: 11px; color: var(--text-3); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st .mark { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; flex: none; background: var(--line); color: var(--text-3); }
-.st.running { border-color: #c9d4ff; background: var(--accent-soft); }
+.st.running { border-color: var(--accent-line); background: var(--accent-soft); }
 .st.running .mark { background: var(--accent); color: #fff; animation: pulse 1.4s ease-in-out infinite; }
 .st.done .mark { background: var(--ok); color: #fff; }
 .st.skipped { opacity: 0.6; }
-.st.gate .h::after { content: "ворота"; font-size: 10px; font-weight: 600; color: var(--warn); margin-left: auto; }
+.st.gate .h::after { content: attr(data-gate); font-size: 10px; font-weight: 600; color: var(--warn); margin-left: auto; }
 @keyframes pulse { 50% { opacity: 0.55; } }
 
 .dock-row { display: flex; gap: 10px; align-items: center; }
 .frames { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; flex: 1; min-height: 58px; }
-.frames:empty::before { content: "Кадры появятся по ходу работы"; color: var(--text-3); font-size: 12px; align-self: center; }
+.frames:empty::before { content: attr(data-empty); color: var(--text-3); font-size: 12px; align-self: center; }
 .frames img {
   height: 56px; width: auto; max-width: 110px; object-fit: cover;
   border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; flex: none;
@@ -360,7 +443,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .card-h { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .card-h .badge { margin-left: auto; }
 
-.agent-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: center; }
+.agent-row { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 8px; align-items: center; }
 .agent-row .seg { width: 100%; }
 .agent-row .seg button { flex: 1; padding: 5px 6px; }
 
@@ -379,7 +462,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .ev.text a { color: var(--accent); }
 .ev.user {
   align-self: flex-end; max-width: 85%;
-  background: var(--text); color: #fff;
+  background: var(--primary-bg); color: var(--primary-fg);
   border-radius: 10px 10px 3px 10px; padding: 7px 11px;
   white-space: pre-wrap;
 }
@@ -410,16 +493,16 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid; place-items: center;
   padding: 32px;
 }
-.lightbox img { max-width: 100%; max-height: calc(100vh - 90px); border-radius: 8px; background: #fff; }
+.lightbox img { max-width: 100%; max-height: calc(100vh / var(--ui) - 90px); border-radius: 8px; background: #fff; }
 .lightbox .cap { color: #ddd; margin-top: 10px; text-align: center; font-size: 12px; }
 .lightbox .doc {
   background: var(--panel); border-radius: var(--radius);
-  max-width: 760px; width: 100%; max-height: calc(100vh - 64px); overflow: auto;
+  max-width: 760px; width: 100%; max-height: calc(100vh / var(--ui) - 64px); overflow: auto;
   padding: 20px 24px; white-space: pre-wrap; font: 13px/1.55 var(--font);
 }
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-  background: var(--text); color: #fff; border-radius: 999px;
+  background: var(--primary-bg); color: var(--primary-fg); border-radius: 999px;
   padding: 8px 16px; z-index: 60; box-shadow: var(--shadow);
 }
 .toast.err { background: var(--bad); }
@@ -431,7 +514,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 .notice {
   display: flex; flex-direction: column; gap: 8px; align-items: flex-start;
-  background: var(--warn-soft); border: 1px solid #f3dca8; color: #7a4a00;
+  background: var(--warn-soft); border: 1px solid var(--notice-line); color: var(--notice-text);
   border-radius: var(--radius); padding: 12px;
 }
 
@@ -442,7 +525,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid; place-items: center; padding: 24px;
 }
 .sheet {
-  width: min(640px, 100%); max-height: calc(100vh - 48px);
+  width: min(680px, 100%); max-height: calc(100vh / var(--ui) - 48px);
   background: var(--panel); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   display: flex; flex-direction: column; overflow: hidden;
 }
@@ -474,15 +557,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
   backdrop-filter: blur(4px);
 }
 .welcome {
-  width: min(660px, 100%); max-height: calc(100vh - 48px);
+  width: min(700px, 100%); max-height: calc(100vh / var(--ui) - 48px);
   display: flex; flex-direction: column;
   background: var(--panel); border-radius: 16px;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
   padding: 26px 28px 18px;
   overflow: hidden;
 }
-.welcome-head { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
-.welcome-icon { width: 72px; height: 72px; flex: none; }
+.welcome-head { display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
+.welcome-icon { width: 104px; height: 104px; flex: none; border-radius: 24px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); }
+.welcome-titles { flex: 1; min-width: 0; }
+.welcome-lang { align-self: flex-start; }
+.welcome-lang .select { width: auto; padding: 6px 8px; }
 .welcome-title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.1; }
 /* «3D» — сталью с синевой, как сетка на значке; остальное — цветом текста. */
 .name-3d {
@@ -506,7 +592,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   display: grid; place-items: center; font-size: 11px;
   background: var(--line); color: var(--text-2);
 }
-.step.on .step-n { background: var(--text); color: #fff; }
+.step.on .step-n { background: var(--primary-bg); color: var(--primary-fg); }
 .step.done .step-n { background: var(--ok); color: #fff; }
 .step.skip .step-n { background: var(--line-strong); }
 .step-opt { width: 100%; font-weight: 400; font-size: 10.5px; color: var(--text-3); padding-left: 27px; margin-top: -3px; }
@@ -525,3 +611,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .sum-row .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sum-row .chk-mark { background: var(--line); color: var(--text-3); }
 .sum-row .chk-mark.ok { background: var(--ok); color: #fff; }
+
+/* ── интерфейс в настройках, заметка к модели ─────────────────────────── */
+.set-grid { display: grid; grid-template-columns: 130px 1fr; gap: 10px 12px; align-items: center; }
+.set-grid .range { flex: 1; }
+.set-grid .select { width: auto; min-width: 180px; }
+.agent-row .select { padding: 6px 8px; }
+.note { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }

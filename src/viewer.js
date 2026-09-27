@@ -65,6 +65,10 @@ export class Viewer {
     loop();
   }
 
+  // Масштаб интерфейса (--ui): окно 3D от него не зависит — см. .viewport в
+  // style.css, — но буфер рисуем с учётом плотности экрана.
+  setScale() { this.resize(); }
+
   resize() {
     const w = this.host.clientWidth || 1;
     const h = this.host.clientHeight || 1;

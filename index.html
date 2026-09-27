@@ -1,10 +1,19 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>3DModelist</title>
   <link rel="icon" href="./src/app-icon.png" />
+  <script>
+    // Тема и масштаб — до первой отрисовки, чтобы окно не мигнуло не той темой.
+    try {
+      var th = localStorage.getItem('modelist.theme');
+      if (th === 'light' || th === 'dark') document.documentElement.dataset.theme = th;
+      var k = parseFloat(localStorage.getItem('modelist.scale'));
+      if (k >= 0.8 && k <= 1.4) document.documentElement.style.setProperty('--ui', String(k));
+    } catch (e) { /* приватный режим */ }
+  </script>
   <link rel="stylesheet" href="./src/style.css" />
 </head>
 <body>
@@ -12,23 +21,23 @@
     <!-- ── слева: задачи и библиотека ─────────────────────────────── -->
     <aside class="side">
       <div class="brand">
-        <img class="logo" src="./src/app-icon.png" alt="" />
+        <img class="logo" src="./src/brand.png" alt="" />
         <div>
           <div class="brand-name">3DModelist</div>
-          <div class="brand-sub">референс → low-poly <span id="version"></span></div>
+          <div class="brand-sub"><span data-i18n="brand.sub"></span> <span id="version"></span></div>
         </div>
       </div>
       <div class="blender" id="blender"><span class="dot"></span><span class="txt">Blender…</span></div>
-      <button class="btn primary wide" id="new-task">＋ Новая модель</button>
+      <button class="btn primary wide" id="new-task">＋ <span data-i18n="side.new"></span></button>
 
-      <div class="side-head">Задачи</div>
+      <div class="side-head" data-i18n="side.tasks"></div>
       <nav class="list" id="tasks"></nav>
 
-      <div class="side-head">Библиотека</div>
+      <div class="side-head" data-i18n="side.library"></div>
       <nav class="list" id="library"></nav>
 
       <div class="side-foot">
-        <button class="btn ghost wide" id="open-settings">⚙ Настройки</button>
+        <button class="btn ghost wide" id="open-settings">⚙ <span data-i18n="settings.title"></span></button>
       </div>
     </aside>
 
@@ -36,18 +45,18 @@
     <main class="stage">
       <div class="toolbar">
         <div class="seg" id="view-mode">
-          <button data-mode="material" class="on" title="Цвета модели, матово">Материалы</button>
-          <button data-mode="clay" title="Серая глина: форма без цвета">Глина</button>
-          <button data-mode="wire" title="Глина и сетка">Сетка</button>
+          <button data-mode="material" class="on" data-i18n="view.material" data-i18n-title="view.material.hint"></button>
+          <button data-mode="clay" data-i18n="view.clay" data-i18n-title="view.clay.hint"></button>
+          <button data-mode="wire" data-i18n="view.wire" data-i18n-title="view.wire.hint"></button>
         </div>
-        <button class="chip-btn on" id="flat" title="Плоские грани, как в low-poly">Грани</button>
-        <button class="chip-btn" id="fit" title="Вписать модель в кадр">Кадр</button>
+        <button class="chip-btn on" id="flat" data-i18n="view.flat" data-i18n-title="view.flat.hint"></button>
+        <button class="chip-btn" id="fit" data-i18n="view.fit" data-i18n-title="view.fit.hint"></button>
       </div>
       <div class="model-info" id="model-info"></div>
       <div class="viewport" id="viewport">
         <div class="empty" id="empty">
-          <div class="empty-title">Здесь появится модель</div>
-          <div class="empty-sub">Создай задачу справа или открой модель из библиотеки</div>
+          <div class="empty-title" data-i18n="view.empty"></div>
+          <div class="empty-sub" data-i18n="view.empty.sub"></div>
         </div>
       </div>
 

@@ -38,9 +38,15 @@ reference from four angles, and export to `.blend` + GLB.
 - **Frames** the agent renders after every change, as they appear.
 - **The chat** with the agent on the right. It stops at the spec and waits for
   your "ok"; after that it shows frames and keeps going until you say stop.
-- **Your choice of agents** per task: Opus or Sonnet as the modeler, how hard
-  it thinks, and an optional reviewer (Opus, Sonnet or Haiku) that looks at the
-  renders with fresh eyes before delivery.
+- **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
+  "always the latest", a specific version, or any model name you type), how
+  hard it thinks, and an optional reviewer (any of them, Haiku included) that
+  looks at the renders with fresh eyes before delivery. With an API key the
+  list of versions is fetched from Anthropic, so new models show up on their own.
+- **Your language**: English, Deutsch, Français, Nederlands, Español,
+  Українська, Русский — switched on the fly. The agent answers in the language
+  you write to it.
+- **Light, dark or system theme**, and an interface size slider (80–140%).
 
 ## Requirements
 
@@ -103,6 +109,7 @@ npm run desktop      # the same inside an app window
 npm run dev          # page with hot reload on :5274 (run `npm run server` alongside)
 npm run dist         # macOS installer (.dmg) into release/
 npm run icon         # rebuild the app icon from build/icon-source.png
+npm run i18n         # check that all seven dictionaries have the same keys
 ```
 
 ## How it works
@@ -144,8 +151,7 @@ build/         app icon
 ## Status
 
 Early, and used in production by its author for low-poly interiors and level
-props. macOS is the tested platform; the interface is in Russian for now, the
-agent can answer in English (Settings ▸ Agent language).
+props. macOS is the tested platform.
 
 ## License
 

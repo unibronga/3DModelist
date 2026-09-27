@@ -8,6 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { load, exists } from './settings.mjs';
 import { ws } from './store.mjs';
+import { UserError } from './errors.mjs';
 
 export function execute(code, { port, timeout = 3000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -60,9 +61,9 @@ let ours = null;
 export async function launch({ background = false } = {}) {
   const s = load();
   if ((await ping()).online) return { already: true };
-  if (!exists(s.blender.bin)) throw new Error('не найден Blender — укажи путь в настройках');
+  if (!exists(s.blender.bin)) throw new UserError('blNotFound');
   const script = path.join(ws(), 'blender', 'modelist_server.py');
-  if (!exists(script)) throw new Error('в рабочей папке нет blender/modelist_server.py — нажми «Подготовить папку»');
+  if (!exists(script)) throw new UserError('prepareFirst');
   const args = background ? ['--background', '--python', script] : ['--python', script];
   const p = spawn(s.blender.bin, args, {
     cwd: ws(),
@@ -82,7 +83,7 @@ export async function launch({ background = false } = {}) {
     cache = { t: 0, v: null };
     if ((await ping()).online) return { started: true };
   }
-  return { started: false, error: 'Blender запущен, но сервер не ответил за 25 с' };
+  return { started: false, code: 'blNoAnswer' };
 }
 
 // Перед ходом агента: Blender на связи? Нет — поднять без окна. Человеку
@@ -90,9 +91,9 @@ export async function launch({ background = false } = {}) {
 export async function ensure() {
   cache = { t: 0, v: null };
   if ((await ping()).online) return { online: true };
-  if (!exists(load().blender.bin)) return { online: false, error: 'Blender не найден — агенту не в чем строить (Настройки ▸ Blender)' };
+  if (!exists(load().blender.bin)) return { online: false, code: 'blNotFound' };
   const r = await launch({ background: true });
-  return r.started || r.already ? { online: true, started: !!r.started } : { online: false, error: r.error };
+  return r.started || r.already ? { online: true, started: !!r.started } : { online: false, code: r.code };
 }
 
 export function stopOurs() {
@@ -102,7 +103,7 @@ export function stopOurs() {
 // Версия без запуска сервера: «есть ли вообще Blender по этому пути».
 export function version(bin = load().blender.bin) {
   return new Promise((resolve) => {
-    if (!exists(bin)) { resolve({ ok: false, error: 'по этому пути Blender нет' }); return; }
+    if (!exists(bin)) { resolve({ ok: false, code: 'blMissing' }); return; }
     let out = '';
     const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
     const timer = setTimeout(() => p.kill('SIGKILL'), 20000);
@@ -111,7 +112,7 @@ export function version(bin = load().blender.bin) {
     p.on('close', () => {
       clearTimeout(timer);
       const m = /Blender\s+([\d.]+(?:\s+LTS)?)/.exec(out);
-      if (!m) { resolve({ ok: false, error: 'это не Blender или он не запустился' }); return; }
+      if (!m) { resolve({ ok: false, code: 'blNotBlender' }); return; }
       const [maj, min] = m[1].split('.').map(Number);
       resolve({ ok: maj > 4 || (maj === 4 && min >= 2), version: m[1], old: !(maj > 4 || (maj === 4 && min >= 2)) });
     });

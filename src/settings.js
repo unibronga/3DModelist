@@ -1,10 +1,12 @@
-// Окно настроек и «готовность» приложения: рабочая папка, Claude (подписка
-// или ключ API), fal.ai, Blender, язык ответов агента.
+// Окно настроек и «готовность» приложения: интерфейс (язык, тема, размер),
+// рабочая папка, Claude (подписка или ключ API), fal.ai, Blender.
 //
 // Ключи на страницу не приходят: сервер отдаёт только «задан, …abcd». Поле
 // ключа пустое — значит «оставить как есть»; стереть — отдельной кнопкой.
 
-import { $, el, api, toast, segment } from './ui.js';
+import { $, el, api, toast, segment, errText } from './ui.js';
+import { t, LANGS, getLang, setLang } from './i18n.js';
+import { applyTheme, applyScale } from './prefs.js';
 
 export const H = { health: null, settings: null };
 let onChange = () => {};
@@ -20,13 +22,13 @@ export async function refreshHealth() {
 
 // Что ещё не настроено — одной строкой на пункт. Пусто — можно работать.
 export function blockers(h = H.health) {
-  if (!h) return ['нет связи с сервером'];
+  if (!h) return [t('block.noServer')];
   const out = [];
-  if (!h.workspace.set) out.push('рабочая папка не выбрана');
-  else if (!h.workspace.ready) out.push('рабочая папка не подготовлена');
-  if (!h.claude.bin) out.push('не найден Claude Code');
-  else if (h.claude.mode === 'api' && !h.claude.key) out.push('не задан ключ Anthropic API');
-  if (!h.python) out.push('нет python3');
+  if (!h.workspace.set) out.push(t('block.noWorkspace'));
+  else if (!h.workspace.ready) out.push(t('block.wsNotReady'));
+  if (!h.claude.bin) out.push(t('block.noClaude'));
+  else if (h.claude.mode === 'api' && !h.claude.key) out.push(t('block.noApiKey'));
+  if (!h.python) out.push(t('block.noPython'));
   return out;
 }
 
@@ -35,8 +37,25 @@ function line(ok, text) {
     el('span', { class: 'chk-mark' }, ok === true ? '✓' : ok === false ? '!' : '…'), el('span', {}, text));
 }
 
-function link(href, text) {
-  return el('a', { href, target: '_blank', rel: 'noreferrer' }, text);
+const link = (href, text) => el('a', { href, target: '_blank', rel: 'noreferrer' }, text);
+
+// Выбор языка: имя языка — на самом языке.
+export function langSelect(onPick) {
+  const sel = el('select', { class: 'select', onchange: (e) => onPick(e.target.value) },
+    ...Object.entries(LANGS).map(([code, name]) => el('option', { value: code }, name)));
+  sel.value = getLang();
+  return sel;
+}
+
+// Результат проверки Claude — одной строкой.
+export function claudeLine(cr) {
+  if (!cr) return null;
+  if (cr.ok) {
+    const bits = [cr.model || ''];
+    if (cr.limit5h != null) bits.push(t('claude.limit', { p: Math.round(cr.limit5h * 100) }));
+    return line(true, t('claude.online', { info: bits.filter(Boolean).join(' · ') }));
+  }
+  return line(false, errText(cr));
 }
 
 export async function openSettings(focus) {
@@ -44,7 +63,6 @@ export async function openSettings(focus) {
   H.settings = s;
   const draft = {
     workspace: s.workspace || h.defaultWorkspace,
-    language: s.language,
     claude: { mode: s.claude.mode, bin: s.claude.bin, configDir: s.claude.configDir, apiKey: '' },
     fal: { key: '' },
     blender: { bin: s.blender.bin, port: s.blender.port },
@@ -57,7 +75,6 @@ export async function openSettings(focus) {
   async function save(quiet = false) {
     const body = {
       workspace: draft.workspace,
-      language: draft.language,
       claude: { mode: draft.claude.mode, bin: draft.claude.bin, configDir: draft.claude.configDir },
       blender: { bin: draft.blender.bin, port: Number(draft.blender.port) },
     };
@@ -70,16 +87,21 @@ export async function openSettings(focus) {
     draft.fal.key = '';
     draft.clear = { claude: false, fal: false };
     await refreshHealth();
-    if (!quiet) toast('Сохранено');
+    if (!quiet) toast(t('settings.saved'));
     onChange();
+  }
+
+  // Интерфейс применяется сразу и сохраняется сразу — без кнопки «Сохранить».
+  async function saveUi(patch) {
+    H.settings = await api('/settings', { method: 'PATCH', body: { ui: patch } });
   }
 
   const act = (fn) => async (e) => {
     const b = e.currentTarget;
     const label = b.textContent;
     b.disabled = true;
-    b.textContent = 'Секунду…';
-    try { await fn(); } catch (err) { toast(err.message, true); }
+    b.textContent = t('common.wait');
+    try { await fn(); } catch (err) { toast(errText(err), true); }
     b.disabled = false;
     b.textContent = label;
     draw();
@@ -89,18 +111,41 @@ export async function openSettings(focus) {
     const hs = H.health;
     const st = H.settings;
     const w = hs.workspace;
+    const ui = st.ui || {};
+
+    // ── интерфейс ──
+    const scaleLabel = el('span', { class: 'hint' }, Math.round((ui.scale || 1) * 100) + '%');
+    const secUi = el('section', { class: 'set', id: 'set-ui' },
+      el('h3', {}, t('set.ui')),
+      el('div', { class: 'set-grid' },
+        el('span', { class: 'muted' }, t('set.lang')),
+        langSelect(async (code) => { setLang(code); await saveUi({ lang: code }); draw(); }),
+        el('span', { class: 'muted' }, t('set.theme')),
+        segment([['light', t('theme.light')], ['dark', t('theme.dark')], ['system', t('theme.system')]],
+          ui.theme || 'system', async (v) => { applyTheme(v); await saveUi({ theme: v }); draw(); }, 'full'),
+        el('span', { class: 'muted' }, t('set.scale')),
+        el('div', { class: 'row' },
+          el('input', {
+            class: 'range', type: 'range', min: 0.8, max: 1.4, step: 0.05, value: ui.scale || 1,
+            // Тянем — меняется сразу; отпустили — сохраняем.
+            oninput: (e) => { applyScale(e.target.value); scaleLabel.textContent = Math.round(e.target.value * 100) + '%'; },
+            onchange: async (e) => { await saveUi({ scale: Number(e.target.value) }); },
+          }),
+          scaleLabel,
+          el('button', { class: 'btn ghost', onclick: async () => { applyScale(1); await saveUi({ scale: 1 }); draw(); } }, '100%'))),
+      el('p', { class: 'muted' }, t('set.lang.agentHint')));
 
     // ── рабочая папка ──
     const wsInput = el('input', { class: 'input', value: draft.workspace, oninput: (e) => { draft.workspace = e.target.value; } });
-    const wsState = !w.set ? line(null, 'не выбрана')
-      : !w.exists ? line(null, 'папки ещё нет — «Подготовить» создаст её')
-        : w.ready ? line(true, `готова: скилов ${w.skills}`)
-          : line(false, 'не хватает набора: ' + (w.missing?.join(', ') || 'скилов'));
+    const wsState = !w.set ? line(null, t('ws.notSet'))
+      : !w.exists ? line(null, t('ws.willCreate'))
+        : w.ready ? line(true, t('ws.ready', { n: w.skills }))
+          : line(false, t('ws.missing', { list: w.missing?.join(', ') || 'skills' }));
     const secWs = el('section', { class: 'set', id: 'set-ws' },
-      el('h3', {}, 'Рабочая папка'),
-      el('p', { class: 'muted' }, 'Здесь лежат референсы, скрипты, модели и набор пайплайна для агента. Можно выбрать папку, где уже шла работа: студия только доложит недостающее и ничего не перезапишет.'),
+      el('h3', {}, t('ws.title')),
+      el('p', { class: 'muted' }, t('ws.text')),
       el('div', { class: 'row' }, wsInput,
-        host && el('button', { class: 'btn', onclick: act(async () => { const p = await host.pickFolder(); if (p) draft.workspace = p; }) }, 'Выбрать…')),
+        host && el('button', { class: 'btn', onclick: act(async () => { const p = await host.pickFolder(); if (p) draft.workspace = p; }) }, t('common.choose'))),
       wsState,
       el('button', {
         class: 'btn primary',
@@ -108,99 +153,90 @@ export async function openSettings(focus) {
           await save(true);
           const r = await api('/workspace/prepare', { method: 'POST' });
           await refreshHealth();
-          toast(r.added.length ? `Разложено файлов: ${r.added.length}` : 'Всё уже на месте');
+          toast(r.added.length ? t('ws.added', { n: r.added.length }) : t('ws.nothing'));
         }),
-      }, 'Сохранить и подготовить папку'));
+      }, t('ws.prepareSave')));
 
     // ── Claude ──
     const c = draft.claude;
-    const keyState = st.claude.apiKey.set ? `ключ задан (${st.claude.apiKey.tail})` : 'ключ не задан';
-    const cr = results.claude;
+    const keyState = st.claude.apiKey.set ? t('key.set', { tail: st.claude.apiKey.tail }) : t('key.notSet');
     const secClaude = el('section', { class: 'set', id: 'set-claude' },
-      el('h3', {}, 'Claude — агент-моделист'),
-      el('p', { class: 'muted' }, 'Агент — это Claude Code, запущенный без окна. Нужна программа ', el('code', {}, 'claude'),
-        ' (', link('https://docs.claude.com/en/docs/claude-code/setup', 'установка'), ').'),
+      el('h3', {}, t('claude.title')),
+      el('p', { class: 'muted' }, t('claude.what'), ' ', link('https://docs.claude.com/en/docs/claude-code/setup', t('claude.install'))),
       segment([
-        ['subscription', 'По подписке', 'Claude Pro / Max: платы за агента нет, тратится лимит подписки'],
-        ['api', 'По ключу API', 'Anthropic API: платишь за токены, сумма видна в каждой задаче'],
+        ['subscription', t('claude.sub'), t('claude.sub.hint')],
+        ['api', t('claude.api'), t('claude.api.hint')],
       ], c.mode, (v) => { c.mode = v; draw(); }, 'full'),
       c.mode === 'subscription'
-        ? el('p', { class: 'muted' }, 'Войти один раз: открой Терминал, набери ', el('code', {}, 'claude'), ' и в нём ', el('code', {}, '/login'), '. Дальше студия пользуется этим входом.')
+        ? el('div', { class: 'field' },
+          el('p', { class: 'muted' }, t('claude.loginText')),
+          host && hs.claude.bin && el('button', { class: 'btn', style: 'align-self:flex-start', onclick: () => host.claudeLogin() }, t('claude.loginBtn')))
         : el('div', { class: 'field' },
-          el('div', { class: 'label' }, 'Ключ Anthropic API', el('span', { class: 'hint' }, keyState)),
+          el('div', { class: 'label' }, t('claude.apiKey'), el('span', { class: 'hint' }, keyState)),
           el('div', { class: 'row' },
-            el('input', { class: 'input', type: 'password', placeholder: st.claude.apiKey.set ? 'оставить как есть' : 'sk-ant-…', autocomplete: 'off', oninput: (e) => { c.apiKey = e.target.value; } }),
-            st.claude.apiKey.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.claude = true; await save(); }) }, 'Стереть')),
-          el('p', { class: 'muted' }, 'Ключ берётся в ', link('https://console.anthropic.com/settings/keys', 'консоли Anthropic'), '. Хранится только на этом компьютере.')),
+            el('input', { class: 'input', type: 'password', placeholder: st.claude.apiKey.set ? t('key.keep') : 'sk-ant-…', autocomplete: 'off', oninput: (e) => { c.apiKey = e.target.value; } }),
+            st.claude.apiKey.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.claude = true; await save(); }) }, t('key.clear'))),
+          el('p', { class: 'muted' }, t('claude.apiWhere'), ' ', link('https://console.anthropic.com/settings/keys', 'console.anthropic.com'))),
       el('details', { class: 'more' },
-        el('summary', {}, 'Путь к claude и профиль'),
-        el('div', { class: 'field' }, el('div', { class: 'label' }, 'Программа claude'),
+        el('summary', {}, t('claude.more')),
+        el('div', { class: 'field' }, el('div', { class: 'label' }, t('claude.bin')),
           el('input', { class: 'input', value: c.bin, placeholder: '/opt/homebrew/bin/claude', oninput: (e) => { c.bin = e.target.value; } })),
-        el('div', { class: 'field' }, el('div', { class: 'label' }, 'Папка профиля Claude Code', el('span', { class: 'hint' }, 'необязательно')),
-          el('input', { class: 'input', value: c.configDir, placeholder: 'обычный профиль (~/.claude)', oninput: (e) => { c.configDir = e.target.value; } }),
-          el('p', { class: 'muted' }, 'Для тех, у кого несколько аккаунтов Claude Code: какой из профилей брать.'))),
-      hs.claude.bin ? line(true, 'claude найден') : line(false, 'claude не найден — установи Claude Code или укажи путь'),
-      cr && (cr.ok
-        ? line(true, `на связи: ${cr.model || ''}${cr.source && cr.source !== 'none' ? ' · ' + cr.source : ''}${cr.limit5h != null ? ` · лимит подписки ${Math.round(cr.limit5h * 100)}%` : ''}`)
-        : line(false, cr.error || 'не ответил')),
+        el('div', { class: 'field' }, el('div', { class: 'label' }, t('claude.profile'), el('span', { class: 'hint' }, t('form.optional'))),
+          el('input', { class: 'input', value: c.configDir, placeholder: '~/.claude', oninput: (e) => { c.configDir = e.target.value; } }),
+          el('p', { class: 'muted' }, t('claude.profile.hint')))),
+      hs.claude.bin ? line(true, t('claude.found')) : line(false, t('claude.notFound')),
+      claudeLine(results.claude),
       el('button', {
         class: 'btn',
-        onclick: act(async () => { await save(true); results.claude = await api('/check/claude', { method: 'POST' }); }),
-      }, 'Сохранить и проверить'));
+        onclick: act(async () => { await save(true); results.claude = await api('/check/claude', { method: 'POST', body: {} }); }),
+      }, t('common.saveCheck')));
 
     // ── fal.ai ──
     const fr = results.fal;
-    const falState = st.fal.key.set ? `ключ задан (${st.fal.key.tail})`
-      : hs.fal.key ? `берётся из ${hs.fal.source === 'env' ? 'переменной FAL_KEY' : '.mcp.json рабочей папки'}` : 'ключ не задан';
+    const falState = st.fal.key.set ? t('key.set', { tail: st.fal.key.tail })
+      : hs.fal.key ? t(hs.fal.source === 'env' ? 'fal.fromEnv' : 'fal.fromMcp') : t('key.notSet');
     const secFal = el('section', { class: 'set', id: 'set-fal' },
-      el('h3', {}, 'fal.ai — генераторы'),
-      el('p', { class: 'muted' }, 'Нужен только для пути «Генератор» (Tripo, Trellis, Hunyuan). Платно, по факту генерации. Ключ — на ',
-        link('https://fal.ai/dashboard/keys', 'fal.ai/dashboard/keys'), '.'),
+      el('h3', {}, t('fal.title')),
+      el('p', { class: 'muted' }, t('fal.text'), ' ', link('https://fal.ai/dashboard/keys', 'fal.ai/dashboard/keys')),
       el('div', { class: 'field' },
-        el('div', { class: 'label' }, 'Ключ fal.ai', el('span', { class: 'hint' }, falState)),
+        el('div', { class: 'label' }, t('fal.key'), el('span', { class: 'hint' }, falState)),
         el('div', { class: 'row' },
-          el('input', { class: 'input', type: 'password', placeholder: st.fal.key.set ? 'оставить как есть' : 'ключ fal', autocomplete: 'off', oninput: (e) => { draft.fal.key = e.target.value; } }),
-          st.fal.key.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.fal = true; await save(); }) }, 'Стереть'))),
-      fr && (fr.ok ? line(true, 'fal.ai принял ключ') : line(false, fr.error)),
-      el('button', { class: 'btn', onclick: act(async () => { await save(true); results.fal = await api('/check/fal', { method: 'POST' }); }) }, 'Сохранить и проверить'));
+          el('input', { class: 'input', type: 'password', placeholder: st.fal.key.set ? t('key.keep') : 'fal key', autocomplete: 'off', oninput: (e) => { draft.fal.key = e.target.value; } }),
+          st.fal.key.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.fal = true; await save(); }) }, t('key.clear')))),
+      fr && (fr.ok ? line(true, t('fal.ok')) : line(false, errText(fr))),
+      el('button', { class: 'btn', onclick: act(async () => { await save(true); results.fal = await api('/check/fal', { method: 'POST' }); }) }, t('common.saveCheck')));
 
     // ── Blender ──
     const b = draft.blender;
     const secBl = el('section', { class: 'set', id: 'set-blender' },
-      el('h3', {}, 'Blender — мастерская агента'),
-      el('p', { class: 'muted' }, 'Путь «Агент скриптом» строит модель в Blender. Студия сама запускает его без окна, когда агент берётся за работу, и выключает при выходе. Для генераторов Blender не обязателен. Нужен 4.2 и новее — ',
-        link('https://www.blender.org/download/', 'скачать'), '.'),
-      el('div', { class: 'field' }, el('div', { class: 'label' }, 'Где установлен Blender'),
+      el('h3', {}, t('bl.title')),
+      el('p', { class: 'muted' }, t('bl.text'), ' ', link('https://www.blender.org/download/', t('bl.download'))),
+      el('div', { class: 'field' }, el('div', { class: 'label' }, t('bl.where')),
         el('input', { class: 'input', value: b.bin, placeholder: '/Applications/Blender.app/Contents/MacOS/Blender', oninput: (e) => { b.bin = e.target.value; } })),
-      hs.blender.online ? line(true, `работает: Blender ${hs.blender.version || ''}${hs.blender.background ? ' (без окна)' : ''}`)
-        : hs.blender.bin ? line(null, 'найден — запустится сам, когда понадобится') : line(false, 'Blender не найден — укажи путь или поставь Blender'),
-      hs.python ? null : line(false, 'нет python3 — нужен для инструментов агента (xcode-select --install)'),
+      hs.blender.online ? line(true, t('bl.running', { v: hs.blender.version || '' }) + (hs.blender.background ? ' — ' + t('blender.headless') : ''))
+        : hs.blender.bin ? line(null, t('bl.willStart')) : line(false, t('bl.notFound')),
+      hs.python ? null : line(false, t('block.noPython')),
       el('div', { class: 'row' },
         el('button', {
-          class: 'btn', disabled: hs.blender.online, title: 'Если хочешь смотреть, как агент строит, прямо в Blender',
-          onclick: act(async () => { await save(true); const r = await api('/blender/launch', { method: 'POST', body: {} }); await refreshHealth(); if (r.error) toast(r.error, true); }),
-        }, 'Открыть Blender с окном')),
+          class: 'btn', disabled: hs.blender.online, title: t('bl.openWindow.hint'),
+          onclick: act(async () => { await save(true); const r = await api('/blender/launch', { method: 'POST', body: {} }); await refreshHealth(); if (r.code) toast(errText(r), true); }),
+        }, t('bl.openWindow'))),
       el('details', { class: 'more' },
-        el('summary', {}, 'Дополнительно'),
-        el('div', { class: 'field' }, el('div', { class: 'label' }, 'Порт связи с Blender', el('span', { class: 'hint' }, 'обычно 9876')),
+        el('summary', {}, t('common.advanced')),
+        el('div', { class: 'field' }, el('div', { class: 'label' }, t('bl.port'), el('span', { class: 'hint' }, t('bl.port.usual'))),
           el('input', { class: 'input', style: 'max-width:120px', value: b.port, inputmode: 'numeric', oninput: (e) => { b.port = e.target.value; } }),
-          el('p', { class: 'muted' }, 'Номер, по которому студия и агент разговаривают с Blender на этом компьютере. Менять, только если 9876 занят другой программой.'))));
-
-    // ── язык ──
-    const secLang = el('section', { class: 'set' },
-      el('h3', {}, 'Язык ответов агента'),
-      segment([['ru', 'Русский'], ['en', 'English']], draft.language, (v) => { draft.language = v; draw(); }, 'full'));
+          el('p', { class: 'muted' }, t('bl.port.hint')))));
 
     const todo = blockers(hs);
     modal.replaceChildren(el('div', { class: 'sheet' },
       el('div', { class: 'sheet-head' },
-        el('div', {}, el('div', { class: 'panel-title' }, 'Настройки'),
-          el('div', { class: 'panel-sub' }, todo.length ? 'Осталось: ' + todo.join(' · ') : 'Всё готово к работе')),
-        el('button', { class: 'btn ghost', onclick: close }, 'Закрыть')),
-      el('div', { class: 'sheet-body' }, secWs, secClaude, secFal, secBl, secLang),
+        el('div', {}, el('div', { class: 'panel-title' }, t('settings.title')),
+          el('div', { class: 'panel-sub' }, todo.length ? t('settings.left', { list: todo.join(' · ') }) : t('settings.allReady'))),
+        el('button', { class: 'btn ghost', onclick: close }, t('common.close'))),
+      el('div', { class: 'sheet-body' }, secUi, secWs, secClaude, secFal, secBl),
       el('div', { class: 'sheet-foot' },
-        el('span', { class: 'muted' }, `3DModelist ${hs.version} · настройки: ${st.home}`),
-        el('button', { class: 'btn primary', onclick: act(async () => { await save(); }) }, 'Сохранить'))));
+        el('span', { class: 'muted' }, t('settings.foot', { v: hs.version, home: st.home })),
+        el('button', { class: 'btn primary', onclick: act(async () => { await save(); }) }, t('common.save')))));
   }
 
   function close() {

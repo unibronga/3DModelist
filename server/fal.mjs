@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ws, addEvent, patchTask, loadTask } from './store.mjs';
 import { load as settings } from './settings.mjs';
+import { UserError } from './errors.mjs';
 
 // Цены — со страниц fal и счёта (см. скил fal-generate); get_pricing врёт.
 // `detail` — один регулятор «сколько граней»: у каждого генератора своё поле.
@@ -15,7 +16,7 @@ export const GENERATORS = [
   {
     id: 'tripo3d/p2/image-to-3d', label: 'Tripo P2', tag: 'персонажи, чистая квад-сетка',
     price: (o) => (o.texture ? 1.10 : 1.00),
-    detail: { min: 500, max: 25000, def: 3500, unit: 'граней' },
+    detail: { min: 500, max: 25000, def: 3500, unit: 'faces' },
     input: (img, o) => ({
       image_url: img, quad: true, face_limit: o.detail, texture: !!o.texture, pbr: false,
       texture_quality: 'standard',
@@ -24,7 +25,7 @@ export const GENERATORS = [
   {
     id: 'fal-ai/trellis-2', label: 'Trellis 2', tag: 'органика, стилизация',
     price: () => 0.30,
-    detail: { min: 5000, max: 200000, def: 20000, unit: 'вершин' },
+    detail: { min: 5000, max: 200000, def: 20000, unit: 'verts' },
     input: (img, o) => ({
       image_url: img, decimation_target: o.detail, texture_size: 1024, remesh: true,
     }),
@@ -59,14 +60,14 @@ export const falKeySource = () => (settings().fal.key ? 'settings' : process.env
 // принят, 401/403 — нет.
 export async function testFal() {
   const key = falKey();
-  if (!key) return { ok: false, error: 'ключ fal.ai не задан' };
+  if (!key) return { ok: false, code: 'falNoKey' };
   try {
     const r = await fetch('https://queue.fal.run/fal-ai/trellis-2/requests/00000000-0000-0000-0000-000000000000/status',
       { headers: { Authorization: `Key ${key}` } });
-    if (r.status === 401 || r.status === 403) return { ok: false, error: 'fal.ai не принял ключ' };
+    if (r.status === 401 || r.status === 403) return { ok: false, code: 'falRejected' };
     return { ok: true, source: falKeySource() };
   } catch (e) {
-    return { ok: false, error: 'нет связи с fal.ai: ' + e.message };
+    return { ok: false, code: 'falNet', params: { msg: e.message } };
   }
 }
 
@@ -80,7 +81,7 @@ function dataUri(rel) {
 
 async function falFetch(url, opts = {}) {
   const key = falKey();
-  if (!key) throw new Error('нет ключа fal.ai — Настройки ▸ fal.ai');
+  if (!key) throw new UserError('noFalKey');
   const r = await fetch(url, {
     ...opts,
     headers: { Authorization: `Key ${key}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
@@ -101,12 +102,12 @@ async function falFetch(url, opts = {}) {
 // Отправить генерацию. Возвращает сразу; ожидание идёт в фоне.
 export async function submit(id, { model, texture, detail, ref }) {
   const g = genById(model);
-  if (!g) throw new Error('неизвестный генератор');
+  if (!g) throw new UserError('unknownGen');
   const task = loadTask(id);
-  if (!task) throw new Error('нет такой задачи');
-  if (task.gen?.state === 'queued' || task.gen?.state === 'running') throw new Error('генерация уже идёт');
+  if (!task) throw new UserError('noTask');
+  if (task.gen?.state === 'queued' || task.gen?.state === 'running') throw new UserError('genRunning');
   const refRel = ref || task.refs?.[0];
-  if (!refRel) throw new Error('нет референса для генератора');
+  if (!refRel) throw new UserError('noRef');
 
   const opts = { texture: !!texture, detail: g.detail ? Math.round(Math.min(g.detail.max, Math.max(g.detail.min, Number(detail) || g.detail.def))) : null };
   const price = g.price(opts);
@@ -121,7 +122,7 @@ export async function submit(id, { model, texture, detail, ref }) {
     };
     t.spent_usd = (t.spent_usd || 0) + price;
   });
-  addEvent(id, { kind: 'gen', text: `Генерация ${g.label} отправлена (≈ $${price.toFixed(2)}).` });
+  addEvent(id, { kind: 'gen', key: 'ev.genSent', params: { label: g.label, price: price.toFixed(2) } });
   watch(id);
 }
 
@@ -154,10 +155,10 @@ export async function watch(id) {
       x.gen.files = files;
       x.gen.finished_at = Date.now() / 1000;
     });
-    addEvent(id, { kind: 'gen', text: `Генерация готова: ${files.map((f) => path.basename(f)).join(', ')}` });
+    addEvent(id, { kind: 'gen', key: 'ev.genDone', params: { files: files.map((f) => path.basename(f)).join(', ') } });
   } catch (e) {
-    patchTask(id, (x) => { if (x.gen) { x.gen.state = 'error'; x.gen.error = e.message; } });
-    addEvent(id, { kind: 'error', text: 'Генерация не удалась: ' + e.message });
+    patchTask(id, (x) => { if (x.gen) { x.gen.state = 'error'; x.gen.error = e.message; x.gen.errorCode = e.code || null; } });
+    addEvent(id, { kind: 'error', key: 'ev.genFail', params: { msg: e.message } });
   } finally {
     watching.delete(id);
   }

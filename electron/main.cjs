@@ -79,6 +79,10 @@ function createWindow() {
             мостик: typeof window.modelist?.pickFolder,
             вход: typeof window.modelist?.claudeLogin,
             приветствие: !!document.querySelector('.welcome'),
+            язык: document.documentElement.lang,
+            тема: document.documentElement.dataset.theme || 'system',
+            масштаб: getComputedStyle(document.documentElement).getPropertyValue('--ui').trim(),
+            ошибка: document.querySelector('.toast.err')?.textContent || null,
           }));
         }, 2500));
       `);
@@ -103,37 +107,15 @@ function createWindow() {
   });
 }
 
+// Системное меню — стандартными ролями: их подписи macOS показывает на языке
+// системы, а язык самой студии выбирается в её настройках.
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(isMac ? [{ role: 'appMenu' }] : []),
-    {
-      label: 'Правка',
-      submenu: [
-        { role: 'undo', label: 'Отменить' },
-        { role: 'redo', label: 'Вернуть' },
-        { type: 'separator' },
-        { role: 'cut', label: 'Вырезать' },
-        { role: 'copy', label: 'Копировать' },
-        { role: 'paste', label: 'Вставить' },
-        { role: 'selectAll', label: 'Выделить всё' },
-      ],
-    },
-    {
-      label: 'Окно',
-      submenu: [
-        { role: 'reload', label: 'Перезагрузить' },
-        { role: 'toggleDevTools', label: 'Инструменты разработчика' },
-        { type: 'separator' },
-        { role: 'resetZoom', label: 'Обычный масштаб' },
-        { role: 'zoomIn', label: 'Крупнее' },
-        { role: 'zoomOut', label: 'Мельче' },
-        { type: 'separator' },
-        { role: 'togglefullscreen', label: 'Во весь экран' },
-        { role: 'minimize', label: 'Свернуть' },
-        { role: 'close', label: 'Закрыть' },
-      ],
-    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
   ]));
 }
 

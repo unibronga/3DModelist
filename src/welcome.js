@@ -1,4 +1,4 @@
-// Окно первого запуска: имя, версия и настройка по шагам.
+// Окно первого запуска: имя, версия, язык и настройка по шагам.
 //
 //   1. Рабочая папка   — где живут модели (обязательно)
 //   2. Claude          — кто строит (обязательно: подписка или ключ API)
@@ -9,22 +9,21 @@
 // Пройденный мастер отмечается в настройках (onboarded) и больше не
 // показывается; всё то же самое потом правится в «Настройках».
 
-import { el, api, toast, segment } from './ui.js';
-import { refreshHealth, H } from './settings.js';
-import appIcon from './app-icon.png';
+import { el, api, toast, segment, errText } from './ui.js';
+import { t, setLang } from './i18n.js';
+import { refreshHealth, H, langSelect, claudeLine } from './settings.js';
+import brand from './brand.png';
 
 const host = window.modelist || null;
 
 const STEPS = [
-  { key: 'ws', title: 'Папка' },
-  { key: 'claude', title: 'Claude' },
-  { key: 'blender', title: 'Blender', optional: true },
-  { key: 'fal', title: 'Генераторы', optional: true },
+  { key: 'ws', title: 'wz.step.ws' },
+  { key: 'claude', title: 'wz.step.claude' },
+  { key: 'blender', title: 'wz.step.blender', optional: true },
+  { key: 'fal', title: 'wz.step.fal', optional: true },
 ];
 
-function link(href, text) {
-  return el('a', { href, target: '_blank', rel: 'noreferrer' }, text);
-}
+const link = (href, text) => el('a', { href, target: '_blank', rel: 'noreferrer' }, text);
 
 function status(kind, text) {
   return el('div', { class: 'chk ' + kind }, el('span', { class: 'chk-mark' }, kind === 'ok' ? '✓' : kind === 'bad' ? '!' : '…'), el('span', {}, text));
@@ -58,7 +57,7 @@ export async function openWelcome({ onDone } = {}) {
     if (st.busy) return;
     st.busy = true;
     draw();
-    try { await fn(); } catch (e) { toast(e.message, true); }
+    try { await fn(); } catch (e) { toast(errText(e), true); }
     st.busy = false;
     draw();
   }
@@ -68,18 +67,18 @@ export async function openWelcome({ onDone } = {}) {
     const w = H.health.workspace;
     const ready = st.done.ws && w.ready && w.path === st.ws;
     return {
-      title: 'Где будут жить модели',
+      title: t('wz.ws.title'),
       body: [
-        el('p', {}, 'Папка для референсов, скриптов и готовых файлов. Туда же студия положит инструкции и скилы для агента. Можно выбрать папку, где уже шла работа: ничего не перезапишется.'),
+        el('p', {}, t('wz.ws.text')),
         el('div', { class: 'row' },
           el('input', { class: 'input', value: st.ws, oninput: (e) => { st.ws = e.target.value; st.done.ws = false; } }),
-          host && el('button', { class: 'btn', onclick: () => run(async () => { const p = await host.pickFolder(); if (p) { st.ws = p; st.done.ws = false; } }) }, 'Выбрать…')),
-        ready ? status('ok', `Папка готова: скилов ${w.skills}`) : null,
+          host && el('button', { class: 'btn', onclick: () => run(async () => { const p = await host.pickFolder(); if (p) { st.ws = p; st.done.ws = false; } }) }, t('common.choose'))),
+        ready ? status('ok', t('ws.ready', { n: w.skills })) : null,
       ],
       primary: ready
-        ? { text: 'Дальше', onclick: next }
+        ? { text: t('common.next'), onclick: next }
         : {
-          text: 'Подготовить папку',
+          text: t('wz.ws.prepare'),
           onclick: () => run(async () => {
             s = await api('/settings', { method: 'PATCH', body: { workspace: st.ws } });
             st.ws = s.workspace;
@@ -95,44 +94,43 @@ export async function openWelcome({ onDone } = {}) {
   function stepClaude() {
     const c = st.claude;
     const found = H.health.claude.bin;
-    const chk = c.check;
     const body = [
-      el('p', {}, 'Модель строит агент — Claude. Подключить можно двумя способами:'),
+      el('p', {}, t('wz.claude.text')),
       segment([
-        ['subscription', 'По подписке', 'Claude Pro или Max: отдельной платы нет'],
-        ['api', 'По ключу API', 'Anthropic API: платишь за работу агента'],
+        ['subscription', t('claude.sub'), t('claude.sub.hint')],
+        ['api', t('claude.api'), t('claude.api.hint')],
       ], c.mode, (v) => { c.mode = v; c.check = null; st.done.claude = false; draw(); }, 'full'),
     ];
     if (!found) {
-      body.push(status('bad', 'Не найдена программа Claude Code — без неё агент не запустится'),
-        el('p', { class: 'muted' }, 'Установи по ', link('https://docs.claude.com/en/docs/claude-code/setup', 'инструкции'), ' и нажми «Проверить».'));
+      body.push(status('bad', t('wz.claude.notFound')),
+        el('p', { class: 'muted' }, t('wz.claude.install'), ' ', link('https://docs.claude.com/en/docs/claude-code/setup', t('claude.install'))));
     }
     if (c.mode === 'subscription') {
-      body.push(el('p', { class: 'muted' }, 'Войти нужно один раз: в Терминале программа ', el('code', {}, 'claude'), ', в ней команда ', el('code', {}, '/login'), '.'),
-        host && found && el('button', { class: 'btn', onclick: () => host.claudeLogin() }, 'Открыть Терминал и войти'));
+      body.push(el('p', { class: 'muted' }, t('claude.loginText')),
+        host && found && el('button', { class: 'btn', onclick: () => host.claudeLogin() }, t('claude.loginBtn')));
     } else {
       body.push(el('div', { class: 'field' },
-        el('div', { class: 'label' }, 'Ключ Anthropic API', el('span', { class: 'hint' }, s.claude.apiKey.set ? `задан (${s.claude.apiKey.tail})` : link('https://console.anthropic.com/settings/keys', 'взять ключ'))),
-        el('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: s.claude.apiKey.set ? 'оставить как есть' : 'sk-ant-…', oninput: (e) => { c.key = e.target.value; } })));
+        el('div', { class: 'label' }, t('claude.apiKey'), el('span', { class: 'hint' }, s.claude.apiKey.set ? t('key.set', { tail: s.claude.apiKey.tail }) : link('https://console.anthropic.com/settings/keys', t('key.get')))),
+        el('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: s.claude.apiKey.set ? t('key.keep') : 'sk-ant-…', oninput: (e) => { c.key = e.target.value; } })));
     }
-    if (chk) body.push(chk.ok ? status('ok', 'Claude на связи') : status('bad', chk.error || 'Claude не ответил'));
+    body.push(claudeLine(c.check));
     return {
-      title: 'Подключи Claude',
+      title: t('wz.claude.title'),
       body,
       primary: st.done.claude
-        ? { text: 'Дальше', onclick: next }
+        ? { text: t('common.next'), onclick: next }
         : {
-          text: 'Проверить',
+          text: t('common.check'),
           onclick: () => run(async () => {
-            const body = { claude: { mode: c.mode } };
-            if (c.mode === 'api' && c.key.trim()) body.claude.apiKey = c.key.trim();
-            s = await api('/settings', { method: 'PATCH', body });
+            const patch = { claude: { mode: c.mode } };
+            if (c.mode === 'api' && c.key.trim()) patch.claude.apiKey = c.key.trim();
+            s = await api('/settings', { method: 'PATCH', body: patch });
             await refreshHealth();
-            c.check = await api('/check/claude', { method: 'POST' });
+            c.check = await api('/check/claude', { method: 'POST', body: {} });
             st.done.claude = !!c.check.ok;
           }),
         },
-      secondary: !st.done.claude && { text: 'Настрою позже', onclick: () => { st.skipped.claude = true; next(); } },
+      secondary: !st.done.claude && { text: t('wz.later'), onclick: () => { st.skipped.claude = true; next(); } },
     };
   }
 
@@ -140,26 +138,26 @@ export async function openWelcome({ onDone } = {}) {
     const b = st.blender;
     const chk = b.check;
     return {
-      title: 'Blender — мастерская агента',
+      title: t('wz.bl.title'),
       body: [
-        el('p', {}, 'Путь «Агент скриптом» строит модель в Blender: размеры, фаски, материалы, выдача GLB и кадры для сверки с референсом. Окно Blender тебе не понадобится — студия сама запускает его без окна, когда агент берётся за работу, и выключает при выходе.'),
-        el('p', { class: 'muted' }, 'Нужен Blender 4.2 или новее — ', link('https://www.blender.org/download/', 'скачать'), '. Если будешь делать модели только генератором — шаг можно пропустить.'),
-        el('div', { class: 'field' }, el('div', { class: 'label' }, 'Где установлен Blender'),
+        el('p', {}, t('wz.bl.text')),
+        el('p', { class: 'muted' }, t('wz.bl.need'), ' ', link('https://www.blender.org/download/', t('bl.download')), ' ', t('wz.bl.skip')),
+        el('div', { class: 'field' }, el('div', { class: 'label' }, t('bl.where')),
           el('input', { class: 'input', value: b.bin, placeholder: '/Applications/Blender.app/Contents/MacOS/Blender', oninput: (e) => { b.bin = e.target.value; b.check = null; st.done.blender = false; draw(); } })),
-        chk && (chk.ok ? status('ok', `Blender ${chk.version} найден`)
-          : status('bad', chk.old ? `Blender ${chk.version} — нужен 4.2 или новее` : chk.error)),
+        chk && (chk.ok ? status('ok', t('wz.bl.found', { v: chk.version }))
+          : status('bad', chk.old ? t('wz.bl.old', { v: chk.version }) : errText(chk))),
       ],
       primary: st.done.blender
-        ? { text: 'Дальше', onclick: next }
+        ? { text: t('common.next'), onclick: next }
         : {
-          text: 'Проверить',
+          text: t('common.check'),
           onclick: () => run(async () => {
             s = await api('/settings', { method: 'PATCH', body: { blender: { bin: b.bin } } });
             b.check = await api('/blender/version', { method: 'POST', body: { bin: b.bin } });
             st.done.blender = !!b.check.ok;
           }),
         },
-      secondary: !st.done.blender && { text: 'Пропустить', onclick: () => { st.skipped.blender = true; next(); } },
+      secondary: !st.done.blender && { text: t('wz.skip'), onclick: () => { st.skipped.blender = true; next(); } },
     };
   }
 
@@ -168,26 +166,26 @@ export async function openWelcome({ onDone } = {}) {
     const chk = f.check;
     const inherited = H.health.fal.key && !s.fal.key.set;
     return {
-      title: 'Генераторы — по желанию',
+      title: t('wz.fal.title'),
       body: [
-        el('p', {}, 'Путь «Генератор» делает форму нейросетью по картинке — для персонажей и органики: Tripo P2, Trellis 2, Hunyuan 3.1. Работает через fal.ai, платно за каждую модель — от $0.23 до $1.10, цена видна на кнопке до запуска.'),
+        el('p', {}, t('wz.fal.text')),
         el('div', { class: 'field' },
-          el('div', { class: 'label' }, 'Ключ fal.ai', el('span', { class: 'hint' },
-            s.fal.key.set ? `задан (${s.fal.key.tail})` : inherited ? 'уже есть в рабочей папке' : link('https://fal.ai/dashboard/keys', 'взять ключ'))),
-          el('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: s.fal.key.set || inherited ? 'оставить как есть' : 'ключ fal', oninput: (e) => { f.key = e.target.value; } })),
-        chk && (chk.ok ? status('ok', 'fal.ai принял ключ') : status('bad', chk.error)),
+          el('div', { class: 'label' }, t('fal.key'), el('span', { class: 'hint' },
+            s.fal.key.set ? t('key.set', { tail: s.fal.key.tail }) : inherited ? t('wz.fal.inherited') : link('https://fal.ai/dashboard/keys', t('key.get')))),
+          el('input', { class: 'input', type: 'password', autocomplete: 'off', placeholder: s.fal.key.set || inherited ? t('key.keep') : 'fal key', oninput: (e) => { f.key = e.target.value; } })),
+        chk && (chk.ok ? status('ok', t('fal.ok')) : status('bad', errText(chk))),
       ],
       primary: st.done.fal
-        ? { text: 'Дальше', onclick: next }
+        ? { text: t('common.next'), onclick: next }
         : {
-          text: 'Проверить',
+          text: t('common.check'),
           onclick: () => run(async () => {
             if (f.key.trim()) s = await api('/settings', { method: 'PATCH', body: { fal: { key: f.key.trim() } } });
             f.check = await api('/check/fal', { method: 'POST' });
             st.done.fal = !!f.check.ok;
           }),
         },
-      secondary: !st.done.fal && { text: 'Пропустить', onclick: () => { st.skipped.fal = true; next(); } },
+      secondary: !st.done.fal && { text: t('wz.skip'), onclick: () => { st.skipped.fal = true; next(); } },
     };
   }
 
@@ -196,16 +194,16 @@ export async function openWelcome({ onDone } = {}) {
       el('span', { class: 'chk-mark ' + (ok ? 'ok' : '') }, ok ? '✓' : '–'), el('b', {}, name), el('span', { class: 'muted' }, note));
     const canWork = st.done.ws && st.done.claude;
     return {
-      title: canWork ? 'Всё готово' : 'Почти готово',
+      title: t(canWork ? 'wz.done.title' : 'wz.done.almost'),
       body: [
-        row(st.done.ws, 'Папка', st.ws),
-        row(st.done.claude, 'Claude', st.done.claude ? (st.claude.mode === 'api' ? 'по ключу API' : 'по подписке') : 'не подключён — агент не запустится'),
-        row(st.done.blender, 'Blender', st.done.blender ? 'агент строит скриптом' : 'пропущен — только генераторы'),
-        row(st.done.fal, 'Генераторы', st.done.fal ? 'ключ fal.ai на месте' : 'пропущены — только агент скриптом'),
-        el('p', { class: 'muted' }, 'Всё это меняется потом в «Настройках» внизу слева.'),
+        row(st.done.ws, t('wz.step.ws'), st.ws),
+        row(st.done.claude, 'Claude', st.done.claude ? t(st.claude.mode === 'api' ? 'claude.api' : 'claude.sub') : t('wz.done.noClaude')),
+        row(st.done.blender, 'Blender', t(st.done.blender ? 'wz.done.blender' : 'wz.done.noBlender')),
+        row(st.done.fal, t('wz.step.fal'), t(st.done.fal ? 'wz.done.fal' : 'wz.done.noFal')),
+        el('p', { class: 'muted' }, t('wz.done.later')),
       ],
       primary: {
-        text: 'Начать работу',
+        text: t('wz.start'),
         onclick: () => run(async () => {
           await api('/settings', { method: 'PATCH', body: { onboarded: true } });
           close();
@@ -221,23 +219,25 @@ export async function openWelcome({ onDone } = {}) {
 
     back.replaceChildren(el('div', { class: 'welcome' },
       el('div', { class: 'welcome-head' },
-        el('img', { class: 'welcome-icon', src: appIcon, alt: '' }),
-        el('div', {},
+        el('img', { class: 'welcome-icon', src: brand, alt: '' }),
+        el('div', { class: 'welcome-titles' },
           el('h1', { class: 'welcome-title' },
             el('span', { class: 'welcome-name' }, el('span', { class: 'name-3d' }, '3D'), 'Modelist'),
             el('span', { class: 'welcome-version' }, meta.version)),
-          el('p', { class: 'welcome-sub' }, 'Референс → low-poly модель. Агент строит её по этапам, ты смотришь и отвечаешь.'))),
+          el('p', { class: 'welcome-sub' }, t('wz.sub'))),
+        el('div', { class: 'welcome-lang' },
+          langSelect(async (code) => { setLang(code); await api('/settings', { method: 'PATCH', body: { ui: { lang: code } } }); draw(); }))),
       el('div', { class: 'steps' }, ...STEPS.map((x, i) => el('button', {
         class: 'step' + (i === st.step ? ' on' : '') + (st.done[x.key] ? ' done' : '') + (st.skipped[x.key] && !st.done[x.key] ? ' skip' : ''),
         disabled: locked(i) || st.busy,
         onclick: () => go(i),
-      }, el('span', { class: 'step-n' }, st.done[x.key] ? '✓' : i + 1), x.title, x.optional && el('span', { class: 'step-opt' }, 'по желанию')))),
+      }, el('span', { class: 'step-n' }, st.done[x.key] ? '✓' : i + 1), t(x.title), x.optional && el('span', { class: 'step-opt' }, t('wz.optional'))))),
       el('div', { class: 'welcome-body' }, el('h2', {}, view.title), ...view.body),
       el('div', { class: 'welcome-foot' },
-        st.step > 0 && st.step < 4 ? el('button', { class: 'btn ghost', disabled: st.busy, onclick: () => go(st.step - 1) }, '← Назад') : el('span'),
+        st.step > 0 && st.step < 4 ? el('button', { class: 'btn ghost', disabled: st.busy, onclick: () => go(st.step - 1) }, '← ' + t('common.back')) : el('span'),
         el('div', { class: 'row' },
           view.secondary ? el('button', { class: 'btn ghost', disabled: st.busy, onclick: view.secondary.onclick }, view.secondary.text) : null,
-          el('button', { class: 'btn primary', disabled: st.busy, onclick: view.primary.onclick }, st.busy ? 'Секунду…' : view.primary.text)))));
+          el('button', { class: 'btn primary', disabled: st.busy, onclick: view.primary.onclick }, st.busy ? t('common.wait') : view.primary.text)))));
   }
 
   function close() {

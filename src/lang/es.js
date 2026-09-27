@@ -9,7 +9,7 @@ export default {
 
   "side.new": "Nuevo modelo",
   "side.tasks": "Tareas",
-  "side.library": "Biblioteca",
+  "side.library": "Modelos terminados",
   "side.noTasks": "Aún no hay nada",
   "side.noModels": "Aún no hay modelos en out/",
   "lib.files": "{n} archivos",
@@ -408,5 +408,15 @@ export default {
   "acct.falNoScope": "fal.ai: saldo oculto",
   "acct.falBalance": "fal.ai: quedan {sum}",
   "acct.falSpent": "gastado {sum}",
-  "fal.balanceHint": "Para ver el saldo restante, la clave de fal necesita el permiso ADMIN (fal.ai/dashboard/keys → nueva clave, Scope: ADMIN)."
+  "fal.balanceHint": "Para ver el saldo restante, la clave de fal necesita el permiso ADMIN (fal.ai/dashboard/keys → nueva clave, Scope: ADMIN).",
+  "lib.all": "Todos",
+  "lib.sub": "La carpeta out/ de la carpeta de trabajo — aquí el agente y el generador dejan los archivos terminados: {path}",
+  "lib.sub.short": "La carpeta out/ de la carpeta de trabajo",
+  "lib.open": "Abrir",
+  "lib.reveal": "En Finder",
+  "lib.trash": "A la papelera",
+  "lib.trash.confirm": "¿Mover «{name}» a la papelera? Se van los archivos terminados, el .blend y las imágenes; el script y las referencias se quedan. Se puede recuperar desde la papelera.",
+  "lib.trashed": "«{name}» en la papelera",
+  "err.noModel": "No existe ese modelo",
+  "err.trashUnsupported": "Papelera no disponible aquí"
 };

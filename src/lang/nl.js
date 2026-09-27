@@ -10,7 +10,7 @@ export default {
 
   "side.new": "Nieuw model",
   "side.tasks": "Taken",
-  "side.library": "Bibliotheek",
+  "side.library": "Klare modellen",
   "side.noTasks": "Nog leeg",
   "side.noModels": "Nog geen modellen in out/",
   "lib.files": "{n} bestanden",
@@ -409,5 +409,15 @@ export default {
   "acct.falNoScope": "fal.ai: saldo verborgen",
   "acct.falBalance": "fal.ai: nog {sum}",
   "acct.falSpent": "uitgegeven {sum}",
-  "fal.balanceHint": "Om het resterende saldo te zien, heeft de fal-sleutel het ADMIN-bereik nodig (fal.ai/dashboard/keys → nieuwe sleutel, Scope: ADMIN)."
+  "fal.balanceHint": "Om het resterende saldo te zien, heeft de fal-sleutel het ADMIN-bereik nodig (fal.ai/dashboard/keys → nieuwe sleutel, Scope: ADMIN).",
+  "lib.all": "Alle",
+  "lib.sub": "De map out/ in de werkmap — hier zetten agent en generator de klare bestanden: {path}",
+  "lib.sub.short": "De map out/ in de werkmap",
+  "lib.open": "Openen",
+  "lib.reveal": "In Finder",
+  "lib.trash": "Naar prullenmand",
+  "lib.trash.confirm": "„{name}” naar de prullenmand? Klare bestanden, .blend en beelden gaan weg; script en referenties blijven. Terug te halen uit de prullenmand.",
+  "lib.trashed": "„{name}” in de prullenmand",
+  "err.noModel": "Dit model bestaat niet",
+  "err.trashUnsupported": "Prullenmand hier niet beschikbaar"
 };

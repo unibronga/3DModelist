@@ -9,7 +9,7 @@ export default {
 
   "side.new": "Нова модель",
   "side.tasks": "Завдання",
-  "side.library": "Бібліотека",
+  "side.library": "Готові моделі",
   "side.noTasks": "Поки порожньо",
   "side.noModels": "В out/ поки немає моделей",
   "lib.files": "файлів: {n}",
@@ -408,5 +408,15 @@ export default {
   "acct.falNoScope": "fal.ai: залишок приховано",
   "acct.falBalance": "fal.ai: залишилось {sum}",
   "acct.falSpent": "витрачено {sum}",
-  "fal.balanceHint": "Щоб бачити залишок грошей, потрібен ключ fal із правом ADMIN (fal.ai/dashboard/keys → новий ключ, Scope: ADMIN)."
+  "fal.balanceHint": "Щоб бачити залишок грошей, потрібен ключ fal із правом ADMIN (fal.ai/dashboard/keys → новий ключ, Scope: ADMIN).",
+  "lib.all": "Усі",
+  "lib.sub": "Папка out/ у робочій папці — сюди агент і генератор кладуть готові файли: {path}",
+  "lib.sub.short": "Папка out/ у робочій папці",
+  "lib.open": "Відкрити",
+  "lib.reveal": "У Finder",
+  "lib.trash": "До кошика",
+  "lib.trash.confirm": "Перемістити «{name}» до кошика? Підуть готові файли, .blend і кадри; скрипт і референси залишаться. З кошика можна повернути.",
+  "lib.trashed": "«{name}» — у кошику",
+  "err.noModel": "Такої моделі немає",
+  "err.trashUnsupported": "Кошик тут недоступний"
 };

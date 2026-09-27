@@ -18,7 +18,7 @@ import { EFFORTS, runTurn, stopTurn, stopAll, busyTask, firstPrompt, testClaude 
 import { versions, validModel, canModel } from './models.mjs';
 import { UserError, errBody } from './errors.mjs';
 import { GENERATORS, genById, submit, watch, testFal, falKeySource } from './fal.mjs';
-import { library, taskMedia, refsTree } from './library.mjs';
+import { library, taskMedia, refsTree, trashModel } from './library.mjs';
 import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
@@ -218,6 +218,11 @@ async function api(req, res, url) {
     return send(res, 412, errBody(new UserError('noWorkspace')));
   }
   if (parts[1] === 'library' && m === 'GET') return send(res, 200, library());
+  // Готовую модель — в Корзину macOS (оттуда её можно вернуть).
+  if (parts[1] === 'library' && parts[3] === 'trash' && m === 'POST') {
+    const r = trashModel(decodeURIComponent(parts[2] || ''));
+    return r.ok ? send(res, 200, r) : send(res, 400, errBody(new UserError(r.code)));
+  }
   if (parts[1] === 'refs' && m === 'GET') return send(res, 200, refsTree());
 
   if (parts[1] === 'tasks') {

@@ -10,7 +10,7 @@ export default {
 
   "side.new": "Nouveau modèle",
   "side.tasks": "Tâches",
-  "side.library": "Bibliothèque",
+  "side.library": "Modèles finis",
   "side.noTasks": "Rien pour l'instant",
   "side.noModels": "Aucun modèle dans out/ pour l'instant",
   "lib.files": "{n} fichiers",
@@ -409,5 +409,15 @@ export default {
   "acct.falNoScope": "fal.ai : solde masqué",
   "acct.falBalance": "fal.ai : reste {sum}",
   "acct.falSpent": "dépensé {sum}",
-  "fal.balanceHint": "Pour voir le solde restant, la clé fal doit avoir le droit ADMIN (fal.ai/dashboard/keys → nouvelle clé, Scope : ADMIN)."
+  "fal.balanceHint": "Pour voir le solde restant, la clé fal doit avoir le droit ADMIN (fal.ai/dashboard/keys → nouvelle clé, Scope : ADMIN).",
+  "lib.all": "Tous",
+  "lib.sub": "Le dossier out/ du dossier de travail — l'agent et les générateurs y déposent les fichiers finis : {path}",
+  "lib.sub.short": "Le dossier out/ du dossier de travail",
+  "lib.open": "Ouvrir",
+  "lib.reveal": "Dans le Finder",
+  "lib.trash": "À la corbeille",
+  "lib.trash.confirm": "Mettre « {name} » à la corbeille ? Les fichiers finis, le .blend et les images partent ; le script et les références restent. Récupérable depuis la corbeille.",
+  "lib.trashed": "« {name} » est dans la corbeille",
+  "err.noModel": "Ce modèle n'existe pas",
+  "err.trashUnsupported": "Corbeille indisponible ici"
 };

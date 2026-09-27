@@ -868,6 +868,48 @@ async function refreshLibrary() {
 }
 
 $('#new-task').addEventListener('click', () => selectTask(null));
+
+// ── готовые модели: окно со всеми, открыть / показать в Finder / в Корзину ──
+function openLibrary() {
+  const back = el('div', { class: 'modal' });
+  const close = () => { back.remove(); document.removeEventListener('keydown', esc); };
+  const esc = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', esc);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  const root = H.health?.workspace?.path || '';
+  const draw = () => {
+    const mainFile = (m) => m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0];
+    const cards = S.library.map((m) => el('div', { class: 'lib-card' + (m.files.some((f) => f.path === S.shown) ? ' on' : '') },
+      el('div', { class: 'lib-thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '', onclick: () => { showModel(mainFile(m).path, { manual: true }); close(); } }),
+      el('div', { class: 'lib-name' }, m.name),
+      el('div', { class: 'muted' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')),
+      el('div', { class: 'lib-actions' },
+        el('button', { class: 'btn primary', onclick: () => { showModel(mainFile(m).path, { manual: true }); close(); } }, t('lib.open')),
+        host?.openPath && el('button', { class: 'btn ghost', onclick: () => reveal(`out/${m.name}`) }, t('lib.reveal')),
+        el('button', {
+          class: 'btn ghost danger',
+          onclick: async () => {
+            if (!confirm(t('lib.trash.confirm', { name: m.name }))) return;
+            try {
+              await api(`/library/${encodeURIComponent(m.name)}/trash`, { method: 'POST' });
+              if (S.shown && S.shown.startsWith(`out/${m.name}/`)) { viewer.clear(); S.shown = null; $('#empty').hidden = false; }
+              toast(t('lib.trashed', { name: m.name }));
+              await refreshLibrary();
+              draw();
+            } catch (e) { toast(errText(e), true); }
+          },
+        }, t('lib.trash')))));
+    back.replaceChildren(el('div', { class: 'sheet wide' },
+      el('div', { class: 'sheet-head' },
+        el('div', {}, el('div', { class: 'panel-title' }, t('side.library')),
+          el('div', { class: 'panel-sub' }, t('lib.sub', { path: root + '/out' }))),
+        el('button', { class: 'btn ghost', onclick: close }, t('common.close'))),
+      el('div', { class: 'sheet-body' }, cards.length ? el('div', { class: 'lib-grid' }, ...cards) : el('p', { class: 'muted' }, t('side.noModels')))));
+  };
+  draw();
+  document.body.append(back);
+}
+$('#lib-all').addEventListener('click', openLibrary);
 $('#open-settings').addEventListener('click', () => openSettings());
 $('#blender').addEventListener('click', () => { if (!$('#blender').classList.contains('on')) openSettings('blender'); });
 
@@ -890,17 +932,15 @@ function renderAccount() {
   $('#acct-avatar').textContent = (name.match(/\p{L}/gu) || ['?']).slice(0, 2).join('').toUpperCase();
   $('#acct-name').classList.toggle('warn', c.mode === 'subscription' && !c.loggedIn);
 
+  // fal — одной строкой, просто остаток (просьба владельца).
   const f = acct.fal;
   const line = $('#acct-fal');
-  const spent = f.spent ? ' · ' + t('acct.falSpent', { sum: money(f.spent) }) : '';
-  line.className = 'acct-fal' + (f.key && f.scope !== false ? '' : ' dim');
+  line.className = 'acct-fal' + (f.balance != null ? '' : ' dim');
   line.textContent = !f.key ? t('acct.falNoKey')
-    : f.scope === false ? t('acct.falNoScope') + spent
-      : f.balance != null ? t('acct.falBalance', { sum: money(f.balance) }) + spent
-        : 'fal.ai' + spent;
+    : f.balance != null ? t('acct.falBalance', { sum: money(f.balance) })
+      : t('acct.falNoScope');
   line.title = f.scope === false ? t('fal.balanceHint') : '';
 }
-$('#acct-fal').addEventListener('click', () => openSettings('fal'));
 
 function renderHealth() {
   const todo = blockers();
@@ -972,6 +1012,7 @@ const menuBar = new MenuBar($('#menubar'), [
   { title: () => t('menu.file'), items: [
     { label: () => t('side.new'), hint: MOD + 'N', action: () => selectTask(null) },
     { label: () => t('menu.openModel'), action: () => $('#open-model').click() },
+    { label: () => t('side.library') + '…', action: openLibrary },
     '-',
     { label: () => t('menu.showWorkspace'), disabled: () => !H.health?.workspace?.exists, action: () => reveal('') },
     { label: () => t('menu.showTaskFolder'), disabled: () => !S.task, action: () => reveal(taskFolder()) },

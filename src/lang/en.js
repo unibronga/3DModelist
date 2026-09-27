@@ -9,7 +9,7 @@ export default {
 
   "side.new": "New model",
   "side.tasks": "Tasks",
-  "side.library": "Library",
+  "side.library": "Finished models",
   "side.noTasks": "Nothing yet",
   "side.noModels": "No models in out/ yet",
   "lib.files": "{n} files",
@@ -408,5 +408,15 @@ export default {
   "acct.falNoScope": "fal.ai: balance hidden",
   "acct.falBalance": "fal.ai: {sum} left",
   "acct.falSpent": "spent {sum}",
-  "fal.balanceHint": "To see the remaining balance, the fal key needs the ADMIN scope (fal.ai/dashboard/keys → new key, Scope: ADMIN)."
+  "fal.balanceHint": "To see the remaining balance, the fal key needs the ADMIN scope (fal.ai/dashboard/keys → new key, Scope: ADMIN).",
+  "lib.all": "All",
+  "lib.sub": "The out/ folder in the workspace — the agent and generators put finished files here: {path}",
+  "lib.sub.short": "The out/ folder in the workspace",
+  "lib.open": "Open",
+  "lib.reveal": "In Finder",
+  "lib.trash": "To Trash",
+  "lib.trash.confirm": "Move “{name}” to the Trash? Finished files, the .blend and frames go; the script and references stay. You can restore it from the Trash.",
+  "lib.trashed": "“{name}” moved to Trash",
+  "err.noModel": "No such model",
+  "err.trashUnsupported": "Trash is not available here"
 };

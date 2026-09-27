@@ -11,7 +11,7 @@ export default {
 
   "side.new": "Новая модель",
   "side.tasks": "Задачи",
-  "side.library": "Библиотека",
+  "side.library": "Готовые модели",
   "side.noTasks": "Пока пусто",
   "side.noModels": "В out/ пока нет моделей",
   "lib.files": "файлов: {n}",
@@ -410,5 +410,15 @@ export default {
   "acct.falNoScope": "fal.ai: остаток скрыт",
   "acct.falBalance": "fal.ai: осталось {sum}",
   "acct.falSpent": "потрачено {sum}",
-  "fal.balanceHint": "Чтобы видеть остаток денег, нужен ключ fal с правом ADMIN (fal.ai/dashboard/keys → новый ключ, Scope: ADMIN)."
+  "fal.balanceHint": "Чтобы видеть остаток денег, нужен ключ fal с правом ADMIN (fal.ai/dashboard/keys → новый ключ, Scope: ADMIN).",
+  "lib.all": "Все",
+  "lib.sub": "Папка out/ в рабочей папке — сюда агент и генератор кладут готовые файлы: {path}",
+  "lib.sub.short": "Папка out/ в рабочей папке",
+  "lib.open": "Открыть",
+  "lib.reveal": "В Finder",
+  "lib.trash": "В Корзину",
+  "lib.trash.confirm": "Убрать «{name}» в Корзину? Уйдут готовые файлы, .blend и кадры; скрипт и референсы останутся. Из Корзины можно вернуть.",
+  "lib.trashed": "«{name}» — в Корзине",
+  "err.noModel": "Такой модели нет",
+  "err.trashUnsupported": "Корзина здесь недоступна"
 };

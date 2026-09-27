@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { ws } from './store.mjs';
 
 export const MODEL_EXT = ['.glb', '.gltf', '.fbx', '.obj'];
@@ -33,9 +34,11 @@ export function library() {
   return dirs.map((d) => {
     const files = walk(path.join(ROOT, 'out', d.name), 2).filter(isModel)
       .sort((a, b) => a.path.localeCompare(b.path));
-    const renders = walk(path.join(ROOT, 'renders', d.name), 0).filter(isImage)
-      .filter((f) => !/peek/.test(f.path));
-    const preview = renders.find((f) => /vs_ref/.test(f.path)) || renders[0] || null;
+    const allShots = walk(path.join(ROOT, 'renders', d.name), 0).filter(isImage);
+    const renders = allShots.filter((f) => !/peek/.test(f.path));
+    // Превью: кадр сравнения с референсом, любой кадр, а у генератора — его собственная картинка.
+    const genShot = walk(path.join(ROOT, 'out', d.name), 2).filter(isImage).find((f) => /rendered_image|thumbnail|preview/.test(f.path));
+    const preview = renders.find((f) => /vs_ref/.test(f.path)) || renders[0] || genShot || allShots[0] || null;
     const blend = path.join('models', d.name + '.blend');
     return {
       name: d.name,
@@ -45,6 +48,25 @@ export function library() {
       mtime: Math.max(0, ...files.map((f) => f.mtime)),
     };
   }).filter((x) => x.files.length).sort((a, b) => b.mtime - a.mtime);
+}
+
+// Убрать модель в Корзину macOS: out/<имя>, models/<имя>.blend(1), renders/<имя>.
+// Скрипт сцены и референсы остаются — по ним модель можно собрать снова.
+export function trashModel(name) {
+  const ROOT = ws();
+  if (!/^[\w.-]+$/.test(name) || !fs.existsSync(path.join(ROOT, 'out', name))) return { ok: false, code: 'noModel' };
+  const trash = path.join(os.homedir(), '.Trash');
+  if (process.platform !== 'darwin' || !fs.existsSync(trash)) return { ok: false, code: 'trashUnsupported' };
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const parts = [`out/${name}`, `models/${name}.blend`, `models/${name}.blend1`, `renders/${name}`]
+    .filter((rel) => fs.existsSync(path.join(ROOT, rel)));
+  const moved = [];
+  for (const rel of parts) {
+    const dst = path.join(trash, `${rel.replace(/\//g, '_')} ${stamp}`);
+    fs.renameSync(path.join(ROOT, rel), dst);
+    moved.push(rel);
+  }
+  return { ok: true, moved };
 }
 
 // Материалы задачи: кадры и модели, появившиеся после её создания.

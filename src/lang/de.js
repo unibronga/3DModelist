@@ -9,7 +9,7 @@ export default {
 
   "side.new": "Neues Modell",
   "side.tasks": "Aufgaben",
-  "side.library": "Bibliothek",
+  "side.library": "Fertige Modelle",
   "side.noTasks": "Noch leer",
   "side.noModels": "Noch keine Modelle in out/",
   "lib.files": "{n} Dateien",
@@ -408,5 +408,15 @@ export default {
   "acct.falNoScope": "fal.ai: Guthaben verborgen",
   "acct.falBalance": "fal.ai: noch {sum}",
   "acct.falSpent": "ausgegeben {sum}",
-  "fal.balanceHint": "Um das Restguthaben zu sehen, braucht der fal-Schlüssel den Bereich ADMIN (fal.ai/dashboard/keys → neuer Schlüssel, Scope: ADMIN)."
+  "fal.balanceHint": "Um das Restguthaben zu sehen, braucht der fal-Schlüssel den Bereich ADMIN (fal.ai/dashboard/keys → neuer Schlüssel, Scope: ADMIN).",
+  "lib.all": "Alle",
+  "lib.sub": "Der Ordner out/ im Arbeitsordner — hier legen Agent und Generator fertige Dateien ab: {path}",
+  "lib.sub.short": "Der Ordner out/ im Arbeitsordner",
+  "lib.open": "Öffnen",
+  "lib.reveal": "Im Finder",
+  "lib.trash": "In den Papierkorb",
+  "lib.trash.confirm": "„{name}“ in den Papierkorb legen? Fertige Dateien, .blend und Bilder gehen; Skript und Referenzen bleiben. Aus dem Papierkorb wiederherstellbar.",
+  "lib.trashed": "„{name}“ im Papierkorb",
+  "err.noModel": "Dieses Modell gibt es nicht",
+  "err.trashUnsupported": "Papierkorb hier nicht verfügbar"
 };

@@ -3,13 +3,14 @@
 
 import { Viewer } from './viewer.js';
 import { $, el, esc, fileUrl, base, money, api, toast, segment, errText } from './ui.js';
-import { t, num, applyDOM, onLangChange, setLang } from './i18n.js';
+import { t, num, applyDOM, onLangChange, setLang, getLang } from './i18n.js';
 import { applyTheme, applyScale, onScaleChange, getScale, getTheme } from './prefs.js';
 import { openSettings, refreshHealth, blockers, setOnChange, H } from './settings.js';
 import { openWelcome } from './welcome.js';
 import { splitSheet } from './sheet.js';
 import { MenuBar } from './menubar.js';
 import { openHelp, openAbout, REPO } from './help.js';
+import { Pins } from './pins.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -56,6 +57,7 @@ const S = {
   eventsTotal: 0,
   openGroups: new Set(),
   shown: null,            // путь модели в окне
+  shownVersion: null,     // номер версии в окне (живая модель агента), иначе null
   autoFollow: true,       // сам переключаться на новую модель задачи
   framesKey: '',
   draft: freshDraft(),
@@ -74,30 +76,74 @@ const viewer = new Viewer($('#viewport'));
 let modelInfo = null;
 function renderModelInfo() {
   const i = modelInfo;
-  $('#model-info').textContent = i
-    ? t('viewer.info', { size: i.size.map((v) => v.toFixed(2)).join(' × '), tris: num(i.tris), ext: i.ext.toUpperCase() })
-    : '';
+  const info = i ? t('viewer.info', { size: i.size.map((v) => v.toFixed(2)).join(' × '), tris: num(i.tris), ext: i.ext.toUpperCase() }) : '';
+  $('#model-info').textContent = i && S.shownVersion != null ? t('viewer.ver', { n: S.shownVersion }) + ' · ' + info : info;
 }
 viewer.onInfo = (i) => { modelInfo = i; renderModelInfo(); };
 onScaleChange((k) => viewer.setScale(k));
 viewer.setScale(getScale());
 
-async function showModel(rel, { manual = false } = {}) {
+// Метки на модели: уходят агенту со следующим сообщением.
+const pins = new Pins(viewer, $('#viewport'), {
+  context: () => ({ version: S.shownVersion, model: S.shown }),
+  onChange: () => { $('#pin').classList.toggle('on', pins.mode); renderPinsList(); },
+});
+function togglePinMode(on = !pins.mode) { pins.setMode(on); }
+$('#pin').addEventListener('click', () => togglePinMode());
+
+// Метки → то, что уходит на сервер: точка в координатах Blender (Z вверх),
+// снимок окна с номерами — агент прочитает его глазами.
+function marksPayload() {
+  if (!pins.list.length) return null;
+  const last = pins.list[pins.list.length - 1];
+  const mark = getComputedStyle(document.documentElement).getPropertyValue('--pin').trim() || '#5b6ee1';
+  return {
+    version: pins.list.map((p) => p.version).filter((v) => v != null).pop() ?? null,
+    model: last.model,
+    image: viewer.shot(pins.list, { mark }),
+    pins: pins.list.map((p) => ({ part: p.part, note: p.note.trim(), point: [p.local[0], -p.local[2], p.local[1]] })),
+  };
+}
+
+// Список меток над полем сообщения: щелчок — открыть замечание, ✕ — убрать.
+function renderPinsList() {
+  const box = $('#pins-list');
+  if (!box) return;
+  box.hidden = !pins.list.length;
+  if (!pins.list.length) { box.replaceChildren(); return; }
+  box.replaceChildren(
+    el('div', { class: 'row between' },
+      el('span', { class: 'muted' }, t('pins.title')),
+      el('button', { class: 'link-btn', onclick: () => pins.clear() }, t('pins.clear'))),
+    ...pins.list.map((p, i) => el('div', { class: 'pin-chip' + (pins.editing === p ? ' on' : ''), onclick: (e) => { if (!e.target.closest('button')) pins.open(p); } },
+      el('span', { class: 'pin-n' }, String(i + 1)),
+      el('span', { class: 'pc-part' }, p.part || t('pin.noPart')),
+      el('span', { class: 'pc-note' + (p.note.trim() ? '' : ' dim') }, p.note.trim() || t('pins.noNote')),
+      el('button', { class: 'pc-x', title: t('pin.remove'), onclick: () => pins.remove(p) }, '✕'))));
+}
+
+async function showModel(rel, { manual = false, version = null } = {}) {
   if (manual) S.autoFollow = false;
   if (S.shown === rel && viewer.root) return;
+  // Версии одной задачи сравниваются с одного ракурса — камеру не трогаем.
+  const keepView = version != null && S.shownVersion != null && !!viewer.root;
   S.shown = rel;
+  S.shownVersion = version;
   $('#empty').hidden = true;
   const busy = el('div', { class: 'loading' }, t('viewer.loading', { name: base(rel) }));
   $('#viewport').append(busy);
   try {
-    await viewer.load(fileUrl(rel));
+    await viewer.load(fileUrl(rel), undefined, { keepView });
   } catch (e) {
     toast(t('viewer.fail', { msg: e.message }), true);
     S.shown = null;
+    S.shownVersion = null;
   } finally {
     busy.remove();
   }
+  renderModelInfo();
   renderOutputs();
+  renderVersions(true);
   renderLibrary();
 }
 
@@ -601,10 +647,13 @@ function renderTaskPanel() {
   });
   const send = async (text) => {
     const msg = text ?? ta.value.trim();
-    if (started && !msg) return;
+    const marks = marksPayload();
+    if (started && !msg && !marks) return;
     try {
-      await api(`/tasks/${tk.id}/agent`, { method: 'POST', body: { message: msg } });
+      await api(`/tasks/${tk.id}/agent`, { method: 'POST', body: { message: msg, marks } });
       ta.value = '';
+      if (marks) { pins.clear(); togglePinMode(false); }
+      S.autoFollow = true;                     // ответ агента — новую версию — показать сразу
       await refreshTask();
     } catch (e) { toast(errText(e), true); }
   };
@@ -617,6 +666,7 @@ function renderTaskPanel() {
         el('div', { class: 'typing' }, t('chat.working')),
         el('button', { class: 'btn danger', onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(refreshTask) }, t('chat.stop')))
       : null,
+    el('div', { class: 'pins-list', id: 'pins-list', hidden: true }),
     !running && started && el('div', { class: 'quick' },
       el('button', { class: 'btn', onclick: () => send(t('quick.ok.msg')) }, t('quick.ok')),
       el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go')),
@@ -630,6 +680,7 @@ function renderTaskPanel() {
 
   panel.replaceChildren(head, el('div', { class: 'panel-scroll', id: 'task-scroll' }, ...blocks), foot);
   renderFeed(true);
+  renderPinsList();
 }
 
 function genCard(tk) {
@@ -729,7 +780,11 @@ function renderFeed(force = false) {
     }
     switch (n.kind) {
       case 'text': return el('div', { class: 'ev text', html: md(n.text) });
-      case 'user': return el('div', { class: 'ev user' }, n.text);
+      case 'user': return el('div', { class: 'ev user' }, evText(n),
+        n.marks && el('div', { class: 'ev-marks' },
+          ...n.marks.pins.map((p) => el('div', { class: 'ev-mark' }, el('span', { class: 'pin-n' }, String(p.n)),
+            el('span', {}, (p.part || t('pin.noPart')) + (p.note ? ' — ' + p.note : '')))),
+          n.marks.image && el('img', { src: fileUrl(n.marks.image), onclick: () => openImages([n.marks.image], 0) })));
       case 'result': return el('div', { class: 'ev result' + (n.error ? ' err' : '') }, evText(n));
       case 'error': return el('div', { class: 'ev error' }, evText(n));
       case 'gen': return el('div', { class: 'ev gen' }, evText(n));
@@ -785,6 +840,45 @@ function renderDock() {
     })));
   }
   renderOutputs();
+  renderVersions();
+}
+
+// Версии живой модели: снимок после каждого прогона скрипта агентом.
+// Щелчок — открыть версию; на старой — «Вернуть версию N» (агент восстановит
+// её скрипт) и «К последней».
+let versionsKey = '';
+function renderVersions(force = false) {
+  const box = $('#versions');
+  const tk = S.task;
+  const vers = tk?.versions || [];
+  box.hidden = !vers.length;
+  const last = vers[vers.length - 1];
+  const key = JSON.stringify([tk?.id, vers.map((v) => v.n), S.shownVersion, !!tk?.running, getLang()]);
+  if (!vers.length || (!force && key === versionsKey)) return;
+  versionsKey = key;
+  const old = S.shownVersion != null && S.shownVersion !== last.n;
+  const list = el('div', { class: 'ver-list' }, ...vers.map((v) => el('button', {
+    class: 'ver' + (v.n === S.shownVersion ? ' on' : ''),
+    style: v.thumb ? `background-image:url("${fileUrl(v.thumb)}")` : '',
+    title: t('ver.tip', { n: v.n, time: new Date(v.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), tris: num(v.tris) }),
+    onclick: () => { S.autoFollow = v.n === last.n; showModel(v.glb, { version: v.n }); },
+  }, el('span', {}, 'v' + v.n))));
+  box.replaceChildren(
+    el('span', { class: 'ver-label' }, t('ver.title')),
+    list,
+    ...(!old ? [] : [el('div', { class: 'ver-actions' },
+      el('button', {
+        class: 'btn', disabled: !!tk.running, title: t('ver.restore.hint'),
+        onclick: async () => {
+          try {
+            await api(`/tasks/${tk.id}/agent`, { method: 'POST', body: { restore: S.shownVersion } });
+            S.autoFollow = true;                 // восстановленная версия придёт новой — показать её
+            await refreshTask();
+          } catch (e) { toast(errText(e), true); }
+        },
+      }, t('ver.restore', { n: S.shownVersion })),
+      el('button', { class: 'btn ghost', onclick: () => { S.autoFollow = true; showModel(last.glb, { version: last.n }); } }, t('ver.latest') + ' ›'))]));
+  list.scrollLeft = list.scrollWidth;
 }
 
 function renderOutputs() {
@@ -813,6 +907,9 @@ async function selectTask(id) {
   S.autoFollow = true;
   S.genDraft = null;
   S.genOpen = false;
+  S.shownVersion = null;
+  pins.clear();
+  togglePinMode(false);
   renderTasks();
   if (!id) {
     renderPanel();
@@ -852,9 +949,15 @@ async function refreshTask(first = false) {
   renderDock();
   renderProcess();
 
-  // Новая модель задачи — сразу в окно, пока человек сам ничего не выбрал.
-  const newest = tk.media?.models?.[0]?.path;
-  if (newest && S.autoFollow && newest !== S.shown) showModel(newest);
+  // Новая модель задачи — сразу в окно, пока человек сам ничего не выбрал:
+  // последняя версия живой модели или свежая выдача в out/ — что новее.
+  const lastVer = tk.versions?.[tk.versions.length - 1];
+  const newest = tk.media?.models?.[0];
+  if (S.autoFollow) {
+    if (lastVer && (!newest || lastVer.t >= newest.mtime)) {
+      if (lastVer.glb !== S.shown) showModel(lastVer.glb, { version: lastVer.n });
+    } else if (newest && newest.path !== S.shown) showModel(newest.path);
+  }
 }
 
 async function refreshTasks() {
@@ -962,6 +1065,8 @@ function renderAll() {
   renderPanel();
   renderDock();
   renderProcess();
+  if (pins.mode) pins.setMode(true);  // подсказка режима меток — на новом языке
+  pins.render();
 }
 onLangChange(renderAll);
 
@@ -1027,6 +1132,7 @@ const menuBar = new MenuBar($('#menubar'), [
     '-',
     { label: () => t('view.flat'), hint: 'F', checked: () => viewer.flat, action: toggleFlat },
     { label: () => t('view.fit.hint'), hint: 'Home', disabled: () => !viewer.root, action: () => viewer.fit() },
+    { label: () => t('view.pin'), hint: 'M', checked: () => pins.mode, action: () => togglePinMode() },
     '-',
     { label: () => t('theme.light'), radio: () => getTheme() === 'light', action: () => setThemeUi('light') },
     { label: () => t('theme.dark'), radio: () => getTheme() === 'dark', action: () => setThemeUi('dark') },
@@ -1095,10 +1201,12 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === '-') { e.preventDefault(); setScaleUi(getScale() - 0.05); return; }
   if (mod && e.key === '0') { e.preventDefault(); setScaleUi(1); return; }
   if (typing || mod || e.altKey) return;
+  if (e.key === 'Escape' && pins.mode) { if (pins.editing) pins.close(); else togglePinMode(false); return; }
   if (e.key === '1') setViewMode('material');
   else if (e.key === '2') setViewMode('clay');
   else if (e.key === '3') setViewMode('wire');
   else if (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'а') toggleFlat();
+  else if (e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'ь') togglePinMode();
   else if (e.key === 'Home') viewer.fit();
 });
 

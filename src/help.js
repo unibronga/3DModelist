@@ -45,6 +45,7 @@ export function openHelp() {
         ['3', t('view.wire')],
         ['F', t('view.flat')],
         ['Home', t('view.fit.hint')],
+        ['M', t('view.pin.hint')],
       ]),
       block(t('help.work'), [
         [MOD + 'N', t('side.new')],

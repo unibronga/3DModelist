@@ -23,10 +23,13 @@ import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
 import { account, dropAccountCache } from './account.mjs';
+import { listVersions, liveDir } from './live.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(HERE, '..', 'dist');
 const FILE_ROOTS = ['refs', 'renders', 'out', 'models'];
+// Из runs/ — только версии модели и снимки с метками; задачи и ленты — через API.
+const RUNS_FILES = /^runs\/studio\/[\w-]+\/(live|marks)\/[^/]+$/;
 const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(path.resolve(HERE, '..', 'package.json'), 'utf8')).version; } catch { return '?'; }
 })();
@@ -154,7 +157,38 @@ function taskView(t) {
     running: busyTask() === t.id || starting === t.id,
     pipe: st && st.task === t.name ? st : null,
     media: taskMedia(t),
+    versions: listVersions(t.id),
   };
+}
+
+// Метки человека на модели → строки для агента. Служебный текст — по-русски
+// (агент отвечает на языке человека); координаты — Blender, метры, Z вверх.
+function marksPrompt(id, marks) {
+  const pins = (Array.isArray(marks?.pins) ? marks.pins : []).slice(0, 30).map((p, i) => ({
+    n: i + 1,
+    part: String(p.part || '').slice(0, 120),
+    note: String(p.note || '').trim().slice(0, 600),
+    point: Array.isArray(p.point) && p.point.length === 3 && p.point.every(Number.isFinite) ? p.point : null,
+  }));
+  if (!pins.length) return null;
+  let image = null;
+  const m = /^data:image\/png;base64,/.exec(marks.image || '');
+  if (m) {
+    const dir = path.join(liveDir(id), '..', 'marks');
+    fs.mkdirSync(dir, { recursive: true });
+    const abs = path.join(dir, `marks_${Date.now()}.png`);
+    fs.writeFileSync(abs, Buffer.from(marks.image.slice(m[0].length), 'base64'));
+    image = path.relative(ws(), abs).split(path.sep).join('/');
+  }
+  const where = Number.isInteger(marks.version) ? `на версии ${marks.version}`
+    : marks.model ? `модель в окне: ${String(marks.model).slice(0, 200)}` : 'на модели в окне';
+  const lines = [`Метки человека на модели (${where}; координаты Blender, метры, Z вверх):`];
+  for (const p of pins) {
+    const at = p.point ? `, точка (${p.point.map((v) => v.toFixed(3)).join(', ')})` : '';
+    lines.push(`${p.n}. ${p.part ? `объект «${p.part}»` : 'объект не определён'}${at} — ${p.note ? `«${p.note}»` : 'без слов, смотри снимок'}`);
+  }
+  if (image) lines.push(`Снимок окна с номерами меток: ${image} — прочитай глазами.`);
+  return { text: lines.join('\n'), event: { version: marks.version ?? null, image, pins: pins.map(({ n, part, note }) => ({ n, part, note })) } };
 }
 
 // ── маршруты ────────────────────────────────────────────────────────────────
@@ -266,15 +300,27 @@ async function api(req, res, url) {
     if (sub === 'agent' && m === 'POST') {
       const b = await readBody(req);
       const text = String(b.message || '').trim();
+      if (busyTask() || starting) return send(res, 409, errBody(new UserError('busy')));
+      // «Вернуть версию N» — просьба агенту восстановить скрипт той версии.
+      const ver = Number.isInteger(b.restore) ? listVersions(id).find((v) => v.n === b.restore) : null;
+      if (b.restore != null && !ver) return send(res, 400, errBody(new UserError('noVersion')));
+      const marks = ver ? null : marksPrompt(id, b.marks);
+      let said = text;
+      if (ver) {
+        said = `Человек просит вернуть форму к версии ${ver.n}. Скрипт той версии — ${ver.code} (копия ${ver.script} ` +
+          `на тот момент). Восстанови ${ver.script} из него, переиграй tools/bl ${ver.script} --peek и коротко скажи, что вернулось.`;
+      } else if (marks) {
+        said = (text ? text + '\n\n' : '') + marks.text;
+      }
       let prompt;
       if (!task.agent?.session_id) {
-        prompt = firstPrompt(task) + (text ? `\n\nЕщё от человека: ${text}` : '');
+        prompt = firstPrompt(task) + (said ? `\n\nЕщё от человека: ${said}` : '');
       } else {
-        if (!text) return send(res, 400, errBody(new UserError('emptyMessage')));
-        prompt = text;
+        if (!said) return send(res, 400, errBody(new UserError('emptyMessage')));
+        prompt = said;
       }
-      if (busyTask() || starting) return send(res, 409, errBody(new UserError('busy')));
-      if (text) addEvent(id, { kind: 'user', text });
+      if (ver) addEvent(id, { kind: 'user', key: 'ev.restoreAsk', params: { n: ver.n } });
+      else if (text || marks) addEvent(id, { kind: 'user', text, ...(marks ? { marks: marks.event } : {}) });
       else addEvent(id, { kind: 'system', key: 'ev.agentStarted' });
       // Blender поднимаем сами и без окна — это может занять до ~10 с,
       // поэтому отвечаем сразу, а ход агента стартует следом.
@@ -324,8 +370,9 @@ async function handler(req, res) {
       if (!ROOT) return send(res, 404, { error: 'нет рабочей папки' });
       const rel = decodeURIComponent(url.pathname.slice('/files/'.length));
       const abs = path.resolve(ROOT, rel);
-      const top = path.relative(ROOT, abs).split(path.sep)[0];
-      if (!FILE_ROOTS.includes(top) || !abs.startsWith(ROOT + path.sep)) return send(res, 403, { error: 'вне рабочей папки' });
+      const inside = path.relative(ROOT, abs).split(path.sep);
+      const allowed = FILE_ROOTS.includes(inside[0]) || RUNS_FILES.test(inside.join('/'));
+      if (!allowed || !abs.startsWith(ROOT + path.sep)) return send(res, 403, { error: 'вне рабочей папки' });
       return sendFile(res, abs, url.searchParams.has('download'));
     }
 

@@ -1,5 +1,7 @@
 // Просмотр модели: GLB/glTF, FBX, OBJ. Всё матовое — блеск на гранях владелец
 // читает как брак (решение 26.09). Режимы: материалы / глина / глина + сетка.
+// Метки: pick() находит часть модели под курсором и точку на ней, shot() —
+// снимок окна с номерами меток для агента.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -9,6 +11,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 
 const CLAY = new THREE.Color('#c9c5bf');
 const WIRE = new THREE.Color('#2a2a28');
+const HOVER = new THREE.Color('#5b6ee1');     // подсветка части под курсором в режиме меток
 
 export class Viewer {
   constructor(host) {
@@ -17,6 +20,9 @@ export class Viewer {
     this.flat = true;
     this.root = null;
     this.onInfo = () => {};
+    this.onFrame = () => {};        // каждый кадр: метки поверх окна следуют за камерой
+    this.hovered = null;
+    this.raycaster = new THREE.Raycaster();
 
     const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }));
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -60,6 +66,7 @@ export class Viewer {
     const loop = () => {
       this.controls.update();
       r.render(this.scene, this.camera);
+      this.onFrame();
       requestAnimationFrame(loop);
     };
     loop();
@@ -85,12 +92,14 @@ export class Viewer {
       for (const m of [].concat(o.material || [], o.userData.orig || [], o.userData.clay || [])) m?.dispose?.();
     });
     this.root = null;
+    this.hovered = null;
     this.url = null;
     this.onInfo(null);
   }
 
   // ext — когда адрес без расширения (файл с диска открыт как blob:).
-  async load(url, ext = url.split('?')[0].split('.').pop().toLowerCase()) {
+  // keepView — не трогать камеру: версии одной модели сравниваются с одного ракурса.
+  async load(url, ext = url.split('?')[0].split('.').pop().toLowerCase(), { keepView = false } = {}) {
     let obj;
     if (ext === 'glb' || ext === 'gltf') obj = (await new GLTFLoader().loadAsync(url)).scene;
     else if (ext === 'fbx') obj = await new FBXLoader().loadAsync(url);
@@ -140,7 +149,7 @@ export class Viewer {
 
     this.size = size;
     this.apply();
-    this.fit();
+    if (!keepView) this.fit();
     this.onInfo({ tris: Math.round(tris), meshes, size: [size.x, size.y, size.z], ext });
   }
 
@@ -158,7 +167,85 @@ export class Viewer {
     this.controls.update();
   }
 
-  setMode(mode) { this.mode = mode; this.apply(); }
+  // Часть модели и точка под курсором. clientX/Y — координаты события мыши.
+  // local — точка в координатах файла (glTF: Y вверх), part — имя объекта как в
+  // Blender (GLTFLoader хранит исходное имя в userData.name).
+  pick(clientX, clientY) {
+    if (!this.root) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.root, true).find((h) => h.object.isMesh && h.object.visible);
+    if (!hit) return null;
+    let part = '';
+    for (let o = hit.object; o && o !== this.root; o = o.parent) {
+      if (o.userData.name) { part = o.userData.name; break; }
+      if (!part && o.name) part = o.name;          // FBX/OBJ: ближайшее имя
+    }
+    const local = this.root.worldToLocal(hit.point.clone());
+    return { mesh: hit.object, part, local: [local.x, local.y, local.z] };
+  }
+
+  // Подсветить часть под курсором (null — снять).
+  hover(mesh) {
+    if (mesh === this.hovered) return;
+    const paint = (m, on) => {
+      for (const mat of [].concat(m?.material || [])) {
+        if (!mat.emissive) continue;
+        mat.emissive.copy(on ? HOVER : new THREE.Color(0x000000));
+        mat.emissiveIntensity = on ? 0.35 : 1;
+      }
+    };
+    paint(this.hovered, false);
+    this.hovered = mesh;
+    paint(mesh, true);
+  }
+
+  // Точка модели → место в окне: доли ширины и высоты (0…1), за камерой — null.
+  project(local) {
+    if (!this.root) return null;
+    const v = this.root.localToWorld(new THREE.Vector3(...local));
+    if (v.clone().sub(this.camera.position).dot(this.camera.getWorldDirection(new THREE.Vector3())) <= 0) return null;
+    v.project(this.camera);
+    return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 };
+  }
+
+  // Снимок окна PNG (data URL) с номерами меток — агент читает его глазами.
+  shot(pins = [], { bg = '#2b3139', mark = '#5b6ee1' } = {}) {
+    this.hover(null);
+    this.renderer.render(this.scene, this.camera);
+    const src = this.renderer.domElement;
+    const k = Math.min(1, 1400 / src.width);
+    const c = document.createElement('canvas');
+    c.width = Math.round(src.width * k);
+    c.height = Math.round(src.height * k);
+    const g = c.getContext('2d');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(src, 0, 0, c.width, c.height);
+    const r = Math.max(11, Math.round(c.width / 90));
+    pins.forEach((p, i) => {
+      const at = this.project(p.local);
+      if (!at) return;
+      const x = at.x * c.width;
+      const y = at.y * c.height;
+      g.beginPath();
+      g.arc(x, y, r, 0, Math.PI * 2);
+      g.fillStyle = mark;
+      g.fill();
+      g.lineWidth = Math.max(2, r / 5);
+      g.strokeStyle = '#ffffff';
+      g.stroke();
+      g.fillStyle = '#ffffff';
+      g.font = `700 ${Math.round(r * 1.1)}px -apple-system, sans-serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(String(i + 1), x, y + 1);
+    });
+    return c.toDataURL('image/png');
+  }
+
+  setMode(mode) { this.hover(null); this.mode = mode; this.apply(); }
   setFlat(flat) { this.flat = flat; this.apply(); }
 
   apply() {

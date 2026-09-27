@@ -17,11 +17,13 @@ import fs from 'node:fs';
 import { ws, addEvent, patchTask, loadTask, tasksDir } from './store.mjs';
 import { load as settings, fullPath, exists } from './settings.mjs';
 import { UserError } from './errors.mjs';
+import { sceneScript, snapshot } from './live.mjs';
 
 // Модели — в models.mjs: «последняя» (fable/opus/sonnet/haiku) или версия.
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 const running = new Map();          // id задачи → процесс
+const scriptRuns = new Map();       // id вызова Bash → скрипт сцены: после него — снимок модели
 export const busyTask = () => [...running.keys()][0] || null;
 
 // Окружение процесса claude — только из белого списка. Студию могут поднять
@@ -69,6 +71,11 @@ function systemPrompt() {
 - Кадры по ходу сохраняй в renders/<папка>/ — студия показывает их сразу.
 - Сообщения — коротко и понятно: что сделал, похоже ли на референс, что решать человеку.
 - Artifact не использовать.
+- После каждого прогона tools/bl scenes/<файл>.py студия сама сохраняет версию модели (v1, v2…) и
+  показывает её человеку в 3D; делать для этого ничего не надо. Человек может попросить вернуть
+  версию N — её скрипт лежит в runs/studio/<задача>/live/vN.py.
+- Называй объекты по смыслу (Seat, Leg_FL, Backrest): человек ставит метки на части модели, и
+  к тебе приходит имя объекта и точка в координатах Blender (метры, Z вверх).
 ${lang}`;
 }
 
@@ -207,7 +214,21 @@ function handle(id, m) {
   if (m.type === 'assistant' && !m.parent_tool_use_id) {
     for (const b of m.message?.content || []) {
       if (b.type === 'text' && b.text.trim()) addEvent(id, { kind: 'text', text: b.text });
-      if (b.type === 'tool_use') addEvent(id, { kind: 'tool', name: b.name, ...toolInfo(b.name, b.input) });
+      if (b.type === 'tool_use') {
+        addEvent(id, { kind: 'tool', name: b.name, ...toolInfo(b.name, b.input) });
+        const script = b.name === 'Bash' && sceneScript(b.input?.command);
+        if (script) scriptRuns.set(b.id, script);
+      }
+    }
+    return;
+  }
+  // Скрипт сцены отработал без ошибки — снимок модели в версии (в фоне, ход не ждёт).
+  if (m.type === 'user' && !m.parent_tool_use_id) {
+    for (const b of m.message?.content || []) {
+      if (b.type !== 'tool_result' || !scriptRuns.has(b.tool_use_id)) continue;
+      const script = scriptRuns.get(b.tool_use_id);
+      scriptRuns.delete(b.tool_use_id);
+      if (!b.is_error) snapshot(id, script);
     }
     return;
   }

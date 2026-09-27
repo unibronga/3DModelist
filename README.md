@@ -36,6 +36,14 @@ reference from four angles, and export to `.blend` + GLB.
 - **Stages** at the bottom: spec → form → look → review → delivery, with
   timers and the agent's notes.
 - **Frames** the agent renders after every change, as they appear.
+- **Live model and versions.** Every time the agent reruns its scene script,
+  the studio exports a quick snapshot from Blender: the model shows up in 3D
+  while it is being built, and each step stays as a version (v1, v2…). Open
+  any version from the same camera angle, or ask the agent to restore it.
+- **Marks on the model.** Press **Mark** (M), click a part — it is highlighted
+  under the cursor — and type what to fix. Marks go to the agent with your next
+  message: the part's name, the point in Blender coordinates and a snapshot of
+  the view with numbered marks.
 - **The chat** with the agent on the right. It stops at the spec and waits for
   your "ok"; after that it shows frames and keeps going until you say stop.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
@@ -140,8 +148,8 @@ page (three.js) ──► local server (Node, no deps) ──► claude -p   ←
 ## Project layout
 
 ```
-server/        local server: tasks, agent runner, fal.ai, Blender, settings
-src/           the page: viewer (three.js), task form, chat, settings
+server/        local server: tasks, agent runner, live model versions, fal.ai, Blender, settings
+src/           the page: viewer (three.js), marks, task form, chat, settings
 electron/      desktop shell — starts the server and shows its page
 kit/           pipeline kit copied into a workspace
 scripts/       icon preparation

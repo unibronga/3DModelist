@@ -4,7 +4,7 @@
 
 [Русская версия](README.ru.md) · [MIT License](LICENSE)
 
-![3DModelist with a finished model](docs/screenshot.png)
+![3DModelist: a captain's chest — versions, a mark on the model, sizes checked against the spec](docs/screenshot.png)
 
 3DModelist is a desktop studio that turns a reference image into a clean,
 game-ready low-poly model. A Claude agent builds the model in Blender, stage by
@@ -44,6 +44,14 @@ reference from four angles, and export to `.blend` + GLB.
   under the cursor — and type what to fix. Marks go to the agent with your next
   message: the part's name, the point in Blender coordinates and a snapshot of
   the view with numbered marks.
+- **Check tools** on the right of the view: the task's reference floating over
+  the model (drag, resize, zoom, fade it to overlay), model parts (hide, select,
+  double-click to frame), views that match the agent's sheet (front, back,
+  sides, top, 3/4), a floor grid in meters, a 1.8 m person for scale, light
+  strength and rotation, and a **Normals** view where flipped faces turn red.
+- **Numbers against the spec**: size (width × depth × height, as in Blender) and
+  triangles above the model turn green when they match the spec and orange when
+  they don't.
 - **The chat** with the agent on the right. It stops at the spec and waits for
   your "ok"; after that it shows frames and keeps going until you say stop.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —

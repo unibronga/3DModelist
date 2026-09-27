@@ -11,6 +11,7 @@ import { splitSheet } from './sheet.js';
 import { MenuBar } from './menubar.js';
 import { openHelp, openAbout, REPO } from './help.js';
 import { Pins } from './pins.js';
+import { Tools } from './tools.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -74,10 +75,28 @@ function freshDraft() {
 // ── просмотр ──────────────────────────────────────────────────────────────
 const viewer = new Viewer($('#viewport'));
 let modelInfo = null;
+// Строка над моделью: версия, габариты (как в Blender: ширина × глубина ×
+// высота) и треугольники. Если в спеке задачи есть габариты и полигонаж —
+// числа зелёные, когда попадают, и оранжевые, когда нет.
 function renderModelInfo() {
   const i = modelInfo;
-  const info = i ? t('viewer.info', { size: i.size.map((v) => v.toFixed(2)).join(' × '), tris: num(i.tris), ext: i.ext.toUpperCase() }) : '';
-  $('#model-info').textContent = i && S.shownVersion != null ? t('viewer.ver', { n: S.shownVersion }) + ' · ' + info : info;
+  const box = $('#model-info');
+  if (!i) { box.replaceChildren(); return; }
+  const size = [i.size[0], i.size[2], i.size[1]];
+  const tk = S.task;
+  const mine = tk && S.shown && (S.shownVersion != null || S.shown.startsWith(`out/${tk.slug}/`));
+  const tgt = mine ? tk.media?.target : null;
+  const mark = (ok) => (ok == null ? '' : ok ? 'ok' : 'warn');
+  const sizeOk = tgt?.size ? size.every((v, k) => !tgt.size[k] || Math.abs(v - tgt.size[k]) / tgt.size[k] <= 0.1) : null;
+  const trisOk = tgt?.tris ? i.tris >= tgt.tris[0] && i.tris <= tgt.tris[1] : null;
+  const bits = [];
+  if (S.shownVersion != null) bits.push(el('span', {}, t('viewer.ver', { n: S.shownVersion })));
+  bits.push(el('span', { class: mark(sizeOk), title: tgt?.size ? t('info.spec', { v: tgt.size.map((v) => v.toFixed(2)).join(' × ') + ' м' }) : t('info.size') },
+    t('info.size.v', { size: size.map((v) => v.toFixed(2)).join(' × ') })));
+  bits.push(el('span', { class: mark(trisOk), title: tgt?.tris ? t('info.spec', { v: tgt.tris.map((v) => num(v)).join('–') }) : '' },
+    t('info.tris', { n: num(i.tris) })));
+  bits.push(el('span', {}, i.ext.toUpperCase()));
+  box.replaceChildren(...bits.flatMap((b, k) => (k ? [' · ', b] : [b])));
 }
 viewer.onInfo = (i) => { modelInfo = i; renderModelInfo(); };
 onScaleChange((k) => viewer.setScale(k));
@@ -90,6 +109,12 @@ const pins = new Pins(viewer, $('#viewport'), {
 });
 function togglePinMode(on = !pins.mode) { pins.setMode(on); }
 $('#pin').addEventListener('click', () => togglePinMode());
+
+// Инструменты окна: референс задачи поверх модели, части, ракурсы, пол, человек, свет.
+const tools = new Tools(viewer, $('#viewport'), {
+  refs: () => (S.task?.refs || []).map((p) => fileUrl(p)),
+  onChange: () => {},
+});
 
 // Метки → то, что уходит на сервер: точка в координатах Blender (Z вверх),
 // снимок окна с номерами — агент прочитает его глазами.
@@ -141,6 +166,7 @@ async function showModel(rel, { manual = false, version = null } = {}) {
   } finally {
     busy.remove();
   }
+  if (viewer.root) tools.modelLoaded();
   renderModelInfo();
   renderOutputs();
   renderVersions(true);
@@ -681,6 +707,8 @@ function renderTaskPanel() {
   panel.replaceChildren(head, el('div', { class: 'panel-scroll', id: 'task-scroll' }, ...blocks), foot);
   renderFeed(true);
   renderPinsList();
+  tools.render();                       // кнопка референса — по референсам этой задачи
+  renderModelInfo();                    // сверка со спекой — по спеке этой задачи
 }
 
 function genCard(tk) {
@@ -912,6 +940,7 @@ async function selectTask(id) {
   togglePinMode(false);
   renderTasks();
   if (!id) {
+    tools.toggle('ref', false);
     renderPanel();
     renderDock();
     renderProcess();
@@ -1067,6 +1096,7 @@ function renderAll() {
   renderProcess();
   if (pins.mode) pins.setMode(true);  // подсказка режима меток — на новом языке
   pins.render();
+  tools.render();
 }
 onLangChange(renderAll);
 
@@ -1129,10 +1159,16 @@ const menuBar = new MenuBar($('#menubar'), [
     { label: () => t('view.material'), hint: '1', radio: () => viewer.mode === 'material', action: () => setViewMode('material') },
     { label: () => t('view.clay'), hint: '2', radio: () => viewer.mode === 'clay', action: () => setViewMode('clay') },
     { label: () => t('view.wire'), hint: '3', radio: () => viewer.mode === 'wire', action: () => setViewMode('wire') },
+    { label: () => t('view.normals'), hint: '4', radio: () => viewer.mode === 'normals', action: () => setViewMode('normals') },
     '-',
     { label: () => t('view.flat'), hint: 'F', checked: () => viewer.flat, action: toggleFlat },
     { label: () => t('view.fit.hint'), hint: 'Home', disabled: () => !viewer.root, action: () => viewer.fit() },
     { label: () => t('view.pin'), hint: 'M', checked: () => pins.mode, action: () => togglePinMode() },
+    '-',
+    { label: () => t('rail.ref'), hint: 'R', checked: () => tools.state.ref, disabled: () => !S.task?.refs?.length, action: () => tools.toggle('ref') },
+    { label: () => t('rail.parts'), hint: 'P', checked: () => tools.state.parts, action: () => tools.toggle('parts') },
+    { label: () => t('rail.grid'), hint: 'G', checked: () => tools.state.grid, action: () => tools.toggle('grid') },
+    { label: () => t('rail.human'), hint: 'H', checked: () => tools.state.human, action: () => tools.toggle('human') },
     '-',
     { label: () => t('theme.light'), radio: () => getTheme() === 'light', action: () => setThemeUi('light') },
     { label: () => t('theme.dark'), radio: () => getTheme() === 'dark', action: () => setThemeUi('dark') },
@@ -1185,7 +1221,7 @@ $('#open-model').addEventListener('change', async (e) => {
   S.shown = 'local:' + f.name;
   $('#empty').hidden = true;
   const url = URL.createObjectURL(f);
-  try { await viewer.load(url, f.name.split('.').pop().toLowerCase()); } catch (err) { toast(t('viewer.fail', { msg: err.message }), true); }
+  try { await viewer.load(url, f.name.split('.').pop().toLowerCase()); tools.modelLoaded(); } catch (err) { toast(t('viewer.fail', { msg: err.message }), true); }
   URL.revokeObjectURL(url);
   renderOutputs();
 });
@@ -1205,8 +1241,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '1') setViewMode('material');
   else if (e.key === '2') setViewMode('clay');
   else if (e.key === '3') setViewMode('wire');
+  else if (e.key === '4') setViewMode('normals');
   else if (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'а') toggleFlat();
   else if (e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'ь') togglePinMode();
+  else if ((e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') && S.task?.refs?.length) tools.toggle('ref');
+  else if (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'з') tools.toggle('parts');
+  else if (e.key.toLowerCase() === 'g' || e.key.toLowerCase() === 'п') tools.toggle('grid');
+  else if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'р') tools.toggle('human');
   else if (e.key === 'Home') viewer.fit();
 });
 

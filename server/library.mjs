@@ -69,6 +69,30 @@ export function trashModel(name) {
   return { ok: true, moved };
 }
 
+// Цели из спеки — для сверки модели в окне: габариты (Ш × Г × В, в метрах) и
+// полигонаж (от–до треугольников). Спеку пишет агент; строки ищем по смыслу,
+// на русском и английском, и прощаем единицы (мм, см, м).
+export function specTarget(text) {
+  const out = {};
+  const n = (s) => Number(String(s).replace(/[\s ]/g, '').replace(',', '.'));
+  const size = /(?:габарит|размер|size|dimension)[^\n\d]*?([\d.,]+)\s*[×xх*]\s*([\d.,]+)\s*[×xх*]\s*([\d.,]+)\s*(мм|см|м|mm|cm|m)(?![\p{L}])/iu.exec(text);
+  if (size) {
+    const k = { мм: 0.001, mm: 0.001, см: 0.01, cm: 0.01 }[size[4].toLowerCase()] || 1;
+    const v = [size[1], size[2], size[3]].map((x) => n(x) * k);
+    if (v.every((x) => x > 0 && x < 10000)) out.size = v;
+  }
+  // Треугольники — целые: разделители тысяч (пробел, запятая, точка) выбрасываем.
+  const int = (x) => Number(String(x).replace(/[\s ,.]/g, ''));
+  const num = String.raw`(\d(?:[\d ,.]*\d)?)`;
+  const key = '(?:полигонаж|треугольник|бюджет|polycount|poly budget|budget|triangles|tris)';
+  const range = new RegExp(key + String.raw`[^\n\d]*?` + num + String.raw`\s*(?:[–—-]|до|to)\s*` + num, 'iu').exec(text);
+  const cap = !range && new RegExp(key + String.raw`[^\n\d]*?(?:≤|<=|до|up to|max\.?|не более)\s*` + num, 'iu').exec(text);
+  if (range) out.tris = [int(range[1]), int(range[2])];
+  else if (cap) out.tris = [0, int(cap[1])];
+  if (out.tris && !(out.tris[1] > 0 && out.tris[0] <= out.tris[1])) delete out.tris;
+  return out.size || out.tris ? out : null;
+}
+
 // Материалы задачи: кадры и модели, появившиеся после её создания.
 export function taskMedia(task) {
   const ROOT = ws();
@@ -84,10 +108,14 @@ export function taskMedia(task) {
     .sort((a, b) => b.mtime - a.mtime);
   const blend = path.join('models', task.slug + '.blend');
   const spec = path.join('refs', task.slug, 'spec.md');
+  const hasSpec = fs.existsSync(path.join(ROOT, spec));
+  let target = null;
+  if (hasSpec) { try { target = specTarget(fs.readFileSync(path.join(ROOT, spec), 'utf8')); } catch { /* нечитаемая спека — без сверки */ } }
   return {
     frames, models,
     blend: fs.existsSync(path.join(ROOT, blend)) ? blend : null,
-    spec: fs.existsSync(path.join(ROOT, spec)) ? spec : null,
+    spec: hasSpec ? spec : null,
+    target,
   };
 }
 

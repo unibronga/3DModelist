@@ -7,6 +7,7 @@
 // (refs/, renders/, out/, models/) для просмотра. Слушает только 127.0.0.1.
 
 import http from 'node:http';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -48,14 +49,14 @@ function send(res, code, body, type = 'application/json; charset=utf-8') {
   res.end(data);
 }
 
-function sendFile(res, abs, download = false) {
+function sendFile(res, abs, download = false, filename = path.basename(abs)) {
   fs.stat(abs, (err, st) => {
     if (err || !st.isFile()) return send(res, 404, { error: 'нет файла' });
     const headers = {
       'Content-Type': TYPES[path.extname(abs).toLowerCase()] || 'application/octet-stream',
       'Content-Length': st.size, 'Cache-Control': 'no-store',
     };
-    if (download) headers['Content-Disposition'] = `attachment; filename="${encodeURIComponent(path.basename(abs))}"`;
+    if (download) headers['Content-Disposition'] = `attachment; filename="${encodeURIComponent(filename)}"`;
     res.writeHead(200, headers);
     fs.createReadStream(abs).pipe(res);
   });
@@ -258,6 +259,40 @@ async function api(req, res, url) {
     return r.ok ? send(res, 200, r) : send(res, 400, errBody(new UserError(r.code)));
   }
   if (parts[1] === 'refs' && m === 'GET') return send(res, 200, refsTree());
+  // Скачать модель в нужном формате: тот же — файл как есть, другой — перевод
+  // Blender'ом без окна (кэш в runs/export/, пока исходник не поменялся).
+  // OBJ отдаётся zip'ом вместе с .mtl — иначе теряются цвета.
+  if (parts[1] === 'export' && m === 'GET') {
+    const ROOT = ws();
+    const rel = url.searchParams.get('path') || '';
+    const fmt = url.searchParams.get('fmt') || '';
+    const src = path.resolve(ROOT, rel);
+    const inside = path.relative(ROOT, src).split(path.sep);
+    const ok = (FILE_ROOTS.includes(inside[0]) || RUNS_FILES.test(inside.join('/'))) && src.startsWith(ROOT + path.sep);
+    if (!ok || !/\.(glb|gltf|fbx|obj)$/i.test(src) || !fs.existsSync(src) || !['glb', 'fbx', 'obj'].includes(fmt)) {
+      return send(res, 400, errBody(new UserError('noModel')));
+    }
+    const name = path.basename(src).replace(/\.[^.]+$/, '');
+    // Имя для человека — имя модели (задачи), а не «v4».
+    const nice = (url.searchParams.get('name') || name).replace(/[^\w.-]+/g, '_').slice(0, 60) || name;
+    if (path.extname(src).slice(1).toLowerCase() === fmt) return sendFile(res, src, true, `${nice}.${fmt}`);
+    const st = fs.statSync(src);
+    const dir = path.join(ROOT, 'runs', 'export', `${name}_${Math.round(st.mtimeMs)}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const dst = path.join(dir, `${name}.${fmt}`);
+    try {
+      if (!fs.existsSync(dst)) await blender.convert(src, dst);
+      if (fmt !== 'obj') return sendFile(res, dst, true, `${nice}.${fmt}`);
+      const zip = path.join(dir, `${name}_obj.zip`);
+      if (!fs.existsSync(zip)) {
+        const files = fs.readdirSync(dir).filter((f) => /\.(obj|mtl|png|jpe?g)$/i.test(f));
+        execFileSync('zip', ['-j', '-q', zip, ...files.map((f) => path.join(dir, f))]);
+      }
+      return sendFile(res, zip, true, `${nice}_obj.zip`);
+    } catch (e) {
+      return send(res, 500, errBody(e.code ? e : new UserError('exportFail', { msg: e.message })));
+    }
+  }
 
   if (parts[1] === 'tasks') {
     const id = parts[2];

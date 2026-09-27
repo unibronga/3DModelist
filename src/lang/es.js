@@ -493,5 +493,17 @@ export default {
   "hist.empty": "Aquí aparecerán las versiones del modelo cuando el agente empiece a construirlo",
   "hist.gen": "Modelo bruto del generador",
   "hist.file": "Modelo terminado",
-  "menu.frames": "Imágenes del agente…"
+  "menu.frames": "Imágenes del agente…",
+  "bar.download": "Descargar",
+  "bar.folder": "Mostrar carpeta",
+  "bar.done": "Modelo terminado",
+  "dl.title": "Descargar el modelo",
+  "dl.none": "Aún no hay modelo",
+  "dl.preparing": "Preparando {fmt}…",
+  "dl.glb.hint": "Godot, Unity, web",
+  "dl.fbx.hint": "Unreal, Maya, 3ds Max",
+  "dl.obj.hint": "universal, zip con colores (.mtl)",
+  "done.refs": "Referencias",
+  "done.hint": "El modelo está terminado. Para cambiar algo: «Reabrir» debajo del modelo.",
+  "err.exportFail": "No se pudo guardar en este formato: {msg}"
 };

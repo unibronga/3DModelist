@@ -493,5 +493,17 @@ export default {
   "hist.empty": "Model versions will show up here once the agent starts building",
   "hist.gen": "Raw generator model",
   "hist.file": "Finished model",
-  "menu.frames": "Agent frames…"
+  "menu.frames": "Agent frames…",
+  "bar.download": "Download",
+  "bar.folder": "Show folder",
+  "bar.done": "Model is done",
+  "dl.title": "Download the model",
+  "dl.none": "No model yet",
+  "dl.preparing": "Preparing {fmt}…",
+  "dl.glb.hint": "Godot, Unity, web",
+  "dl.fbx.hint": "Unreal, Maya, 3ds Max",
+  "dl.obj.hint": "universal, zip with colors (.mtl)",
+  "done.refs": "References",
+  "done.hint": "The model is done. To change something, press “Reopen” under the model.",
+  "err.exportFail": "Couldn't save in this format: {msg}"
 };

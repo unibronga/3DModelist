@@ -494,5 +494,17 @@ export default {
   "hist.empty": "Modelversies verschijnen hier zodra de agent begint te bouwen",
   "hist.gen": "Ruw generatormodel",
   "hist.file": "Klaar model",
-  "menu.frames": "Beelden van de agent…"
+  "menu.frames": "Beelden van de agent…",
+  "bar.download": "Downloaden",
+  "bar.folder": "Map tonen",
+  "bar.done": "Model is klaar",
+  "dl.title": "Model downloaden",
+  "dl.none": "Nog geen model",
+  "dl.preparing": "{fmt} wordt voorbereid…",
+  "dl.glb.hint": "Godot, Unity, web",
+  "dl.fbx.hint": "Unreal, Maya, 3ds Max",
+  "dl.obj.hint": "universeel, zip met kleuren (.mtl)",
+  "done.refs": "Referenties",
+  "done.hint": "Het model is klaar. Iets aanpassen? Kies „Heropenen” onder het model.",
+  "err.exportFail": "Opslaan in dit formaat lukte niet: {msg}"
 };

@@ -245,7 +245,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .logo { width: 40px; height: 40px; flex: none; border-radius: 10px; }
 #version { color: var(--text-3); margin-left: 4px; }
 .brand-name { font-weight: 650; font-size: 14px; }
-.brand-sub { color: var(--text-3); font-size: 12px; }
+.brand-sub { color: var(--text-3); font-size: 12px; white-space: nowrap; }
 
 .blender {
   cursor: pointer;
@@ -519,7 +519,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .ev.sys, .ev.result { color: var(--text-3); font-size: 12px; text-align: center; }
 .ev.result.err, .ev.error { color: var(--bad); }
 .ev.error { background: var(--bad-soft); border-radius: 8px; padding: 6px 10px; font-size: 12px; }
-.ev.gen { color: var(--accent); font-size: 12px; text-align: center; }
+.ev.genev { color: var(--text-3); font-size: 12px; text-align: center; }   /* не .gen: так зовутся карточки выбора генератора */
 .tools {
   font-size: 12px; color: var(--text-3);
   border-left: 2px solid var(--line); padding: 2px 0 2px 10px;
@@ -1019,3 +1019,27 @@ kbd {
 .hist-empty { padding: 6px; line-height: 1.5; }
 .hist-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 2px; border-top: 1px solid var(--line); }
 .hist-actions .btn { padding: 6px 10px; font-size: 12.5px; }
+
+/* ── строка под моделью: скачать, папка, готово ────────────────────────── */
+.model-bar {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 3;
+  display: flex; gap: 6px; align-items: center; padding: 5px;
+  background: var(--glass); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.model-bar .btn { white-space: nowrap; }
+.bar-dl { position: relative; }
+.dl-pop {
+  position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 300px; padding: 5px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.dl-pop .menu-item { height: 30px; }
+
+/* ── готовая задача справа: референсы и скачивание ─────────────────────── */
+.done-refs { grid-template-columns: repeat(3, 1fr); }
+.dl-list { display: flex; flex-direction: column; gap: 6px; }
+.dl-btn { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px 12px; }
+.dl-fmt { font-weight: 700; min-width: 38px; }
+.dl-hint { color: var(--text-3); font-weight: 400; font-size: 12px; }
+.dl-btn:hover .dl-hint { color: inherit; }
+.done-hint { line-height: 1.5; }

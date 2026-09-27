@@ -189,6 +189,7 @@ async function showModel(rel, { manual = false, version = null } = {}) {
   if (viewer.root) tools.modelLoaded();
   renderModelInfo();
   tools.renderHistory();
+  renderModelBar();
   renderLibrary();
 }
 
@@ -253,7 +254,7 @@ function taskBadge(tk) {
   if (tk.gen_state === 'queued' || tk.gen_state === 'running') return el('span', { class: 'badge run' }, t('badge.generating'));
   if (tk.state === 'done') return el('span', { class: 'badge done' }, t('badge.done'));
   if (tk.gen_state === 'error') return el('span', { class: 'badge err' }, t('badge.error'));
-  if (tk.agent_state === 'waiting') return el('span', { class: 'badge wait' }, t('badge.waiting'));
+  if (tk.agent_state === 'waiting' || tk.gen_state === 'done') return el('span', { class: 'badge wait' }, t('badge.waiting'));
   return el('span', { class: 'badge' }, t('badge.new'));
 }
 
@@ -276,27 +277,99 @@ function renderTasks() {
 
 const trashIcon = () => el('span', { html: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>' });
 
+// Готовая модель: справа — только референсы и скачивание. Чат, генератор и
+// агенты не нужны; «Вернуть в работу» — в строке под моделью (владелец 27.09).
+function renderDonePanel() {
+  const tk = S.task;
+  const menuBtn = el('button', { class: 'icon-btn', title: t('task.menu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
+    el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>' }));
+  const dl = (fmt) => el('button', { class: 'btn dl-btn', onclick: () => downloadAs(fmt) },
+    el('span', { class: 'dl-fmt' }, fmt.toUpperCase()), el('span', { class: 'dl-hint' }, t('dl.' + fmt + '.hint')));
+  const refs = tk.refs || [];
+  $('#panel').replaceChildren(
+    el('div', { class: 'panel-head' },
+      el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, tk.name), menuBtn),
+      el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
+        el('span', { class: 'panel-sub' }, [routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })].join(' · ')))),
+    el('div', { class: 'panel-scroll' },
+      refs.length > 0 && el('div', { class: 'field' },
+        el('div', { class: 'label' }, t('done.refs')),
+        el('div', { class: 'refs done-refs' }, ...refs.map((p, i) => el('div', {
+          class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(refs, i),
+        })))),
+      el('div', { class: 'field' },
+        el('div', { class: 'label' }, t('dl.title')),
+        modelSource() ? el('div', { class: 'dl-list' }, dl('glb'), dl('fbx'), dl('obj')) : el('div', { class: 'muted' }, t('dl.none'))),
+      el('div', { class: 'muted done-hint' }, t('done.hint'))));
+  tools.render();
+  renderModelInfo();
+}
+
+// Какую модель скачивать: открытую в окне, если она этой задачи, иначе последнюю.
+function modelSource() {
+  const tk = S.task;
+  if (!tk) return null;
+  const mine = S.shown && (S.shown.startsWith(`out/${tk.slug}/`) || S.shown.startsWith(`runs/studio/${tk.id}/`));
+  return mine ? S.shown : historyItems()[0]?.path || null;
+}
+
+// Скачать в формате: тот же — сразу, другой — сервер переводит Blender'ом без окна.
+async function downloadAs(fmt) {
+  const src = modelSource();
+  if (!src) return;
+  const same = src.split('.').pop().toLowerCase() === fmt;
+  if (!same) toast(t('dl.preparing', { fmt: fmt.toUpperCase() }));
+  try {
+    const r = await fetch(`/api/export?path=${encodeURIComponent(src)}&fmt=${fmt}&name=${encodeURIComponent(S.task.slug)}`);
+    if (!r.ok) { const e = await r.json().catch(() => ({})); throw Object.assign(new Error(e.error || r.statusText), e); }
+    const name = decodeURIComponent((/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || `${S.task.slug}.${fmt}`);
+    const url = URL.createObjectURL(await r.blob());
+    const a = el('a', { href: url, download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { toast(errText(e), true); }
+}
+
+// Строка под моделью задачи — как нижняя панель Tripo: скачать, папка, готово.
+function renderModelBar() {
+  const bar = $('#model-bar');
+  const tk = S.task;
+  const src = modelSource();
+  bar.hidden = !tk || !S.shown || !src;
+  if (bar.hidden) return;
+  const done = tk.state === 'done';
+  const dlBtn = el('button', { class: 'btn', onclick: (e) => {
+    document.querySelector('.dl-pop')?.remove();
+    const pop = el('div', { class: 'dl-pop' }, ...['glb', 'fbx', 'obj'].map((f) => el('button', {
+      class: 'menu-item', onclick: () => { pop.remove(); downloadAs(f); },
+    }, el('span', {}), el('span', {}, f.toUpperCase() + ' — ' + t('dl.' + f + '.hint')), el('span', {}))));
+    e.currentTarget.parentElement.append(pop);
+    const off = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('pointerdown', off, true); } };
+    setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
+  } }, '↓ ' + t('bar.download'));
+  bar.replaceChildren(
+    el('div', { class: 'bar-dl' }, dlBtn),
+    host?.openPath && el('button', { class: 'btn', onclick: () => reveal(src.slice(0, src.lastIndexOf('/'))) }, t('bar.folder')),
+    done
+      ? el('button', { class: 'btn', onclick: () => patch({ state: 'open' }) }, '↩ ' + t('task.reopen'))
+      : el('button', { class: 'btn primary', disabled: !!tk.running, title: t('task.done.hint'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('bar.done')));
+}
+
 // Короткое имя модели для строки «Как строится».
 const modelShort = (id) => FAMILY_NAME[id] || (S.meta?.models || []).find((m) => m.id === id)?.label || id || '';
 
 // Меню «⋯» в шапке задачи: скачать, спека, кадры агента, папка, готово, удалить.
 function taskMenu(anchor, tk) {
   document.querySelector('.pop-menu')?.remove();
-  const latest = tk.media?.models?.[0]?.path || tk.versions?.[tk.versions.length - 1]?.glb;
   const frames = (tk.media?.frames || []).map((f) => f.path);
   const item = (label, action, { disabled = false, danger = false } = {}) => el('button', {
     class: 'menu-item' + (danger ? ' danger' : ''), disabled,
     onclick: () => { menu.remove(); action(); },
   }, el('span', {}), el('span', {}, label), el('span', {}));
   const menu = el('div', { class: 'pop-menu' },
-    item(t('menu.downloadModel'), () => download(latest), { disabled: !latest }),
     item(t('task.openSpec'), () => openDoc(tk.media.spec), { disabled: !tk.media?.spec }),
     item(t('menu.frames'), () => openImages(frames, 0), { disabled: !frames.length }),
-    item(t('menu.showTaskFolder'), () => reveal(taskFolder()), { disabled: !host?.openPath }),
     el('div', { class: 'menu-sep' }),
-    tk.state === 'done'
-      ? item(t('task.reopen'), () => patch({ state: 'open' }))
-      : item('✓ ' + t('task.done'), () => patch({ state: 'done' })),
     item(t('task.delete'), () => deleteTask(tk), { danger: true, disabled: !!tk.running }));
   const r = anchor.getBoundingClientRect();
   const k = getScale();
@@ -695,6 +768,7 @@ setInterval(() => { try { renderProcess(); } catch { /* до загрузки */
 function renderTaskPanel() {
   const tk = S.task;
   const panel = $('#panel');
+  if (tk.state === 'done') { renderDonePanel(); return; }
   const running = tk.running;
   const started = !!tk.agent?.session_id;
 
@@ -718,7 +792,8 @@ function renderTaskPanel() {
 
   // «Как строится» — выбор пути, генератор и агенты. До старта раскрыто,
   // потом свёрнуто в одну строку: главное место — у чата.
-  const how = el('details', { class: 'howto', open: S.howOpen.has(tk.id) || (!started && !S.howClosed.has(tk.id)) },
+  const produced = tk.gen?.state === 'done' || (tk.versions || []).length > 0 || (tk.media?.models || []).length > 0;
+  const how = el('details', { class: 'howto', open: S.howOpen.has(tk.id) || (!started && !produced && !S.howClosed.has(tk.id)) },
     el('summary', {},
       el('span', { class: 'how-title' }, t('how.title')),
       el('span', { class: 'how-sum' }, tk.route === 'generator'
@@ -888,7 +963,7 @@ function renderFeed(force = false) {
           n.marks.image && el('img', { src: fileUrl(n.marks.image), onclick: () => openImages([n.marks.image], 0) })));
       case 'result': return el('div', { class: 'ev result' + (n.error ? ' err' : '') }, evText(n));
       case 'error': return el('div', { class: 'ev error' }, evText(n));
-      case 'gen': return el('div', { class: 'ev gen' }, evText(n));
+      case 'gen': return el('div', { class: 'ev genev' }, evText(n));
       default: return el('div', { class: 'ev sys' }, evText(n));
     }
   }));
@@ -899,6 +974,7 @@ async function patch(body) {
   try {
     S.task = await api(`/tasks/${S.sel}`, { method: 'PATCH', body });
     renderTaskPanel();
+    renderModelBar();
     refreshTasks();
   } catch (e) { toast(errText(e), true); }
 }
@@ -930,8 +1006,8 @@ function historyItems() {
 const hhmm = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // Сохранено имя, чтобы не трогать остальной код: док теперь — только история.
-function renderDock() { tools.renderHistory(); }
-function renderOutputs() { tools.renderHistory(); }
+function renderDock() { tools.renderHistory(); renderModelBar(); }
+function renderOutputs() { tools.renderHistory(); renderModelBar(); }
 
 // ── выбор и опрос ─────────────────────────────────────────────────────────
 async function selectTask(id) {

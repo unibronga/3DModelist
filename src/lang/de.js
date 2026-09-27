@@ -493,5 +493,17 @@ export default {
   "hist.empty": "Hier erscheinen die Modellversionen, sobald der Agent zu bauen beginnt",
   "hist.gen": "Rohmodell des Generators",
   "hist.file": "Fertiges Modell",
-  "menu.frames": "Agent-Bilder…"
+  "menu.frames": "Agent-Bilder…",
+  "bar.download": "Herunterladen",
+  "bar.folder": "Ordner zeigen",
+  "bar.done": "Modell fertig",
+  "dl.title": "Modell herunterladen",
+  "dl.none": "Noch kein Modell",
+  "dl.preparing": "Bereite {fmt} vor…",
+  "dl.glb.hint": "Godot, Unity, Web",
+  "dl.fbx.hint": "Unreal, Maya, 3ds Max",
+  "dl.obj.hint": "universell, ZIP mit Farben (.mtl)",
+  "done.refs": "Referenzen",
+  "done.hint": "Das Modell ist fertig. Für Änderungen: „Wieder öffnen“ unter dem Modell.",
+  "err.exportFail": "In diesem Format ließ sich nicht speichern: {msg}"
 };

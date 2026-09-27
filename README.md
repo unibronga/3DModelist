@@ -54,8 +54,11 @@ reference from four angles, and export to `.blend` + GLB.
   status ("Agent is working…", "Waiting for your reply"). The agent stops at the
   spec and waits for your "ok", then keeps going until you say stop. How the
   model is built (agent or generator, which models) folds into one line above
-  the chat; downloads, the spec, the agent's frames and **Delete task** are in
-  the task's ⋯ menu (deleted tasks go to the Trash; finished files stay).
+  the chat; the spec, the agent's frames and **Delete task** are in the task's
+  ⋯ menu (deleted tasks go to the Trash; finished files stay).
+- **Under the model**: Download (GLB, FBX or OBJ — the studio converts with
+  Blender when needed), Show folder, and **Model is done** / **Reopen**. A done
+  task keeps only its references and download buttons on the right.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how
   hard it thinks, and an optional reviewer (any of them, Haiku included) that

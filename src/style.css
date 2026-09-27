@@ -1,4 +1,4 @@
-/* 3DModelist — светлая мастерская: белые панели, модель в центре. */
+/* 3DModelist — мастерская: панели по краям, модель в центре. Светлая и тёмная темы — токенами. */
 
 :root {
   --bg: #eeeeec;
@@ -34,73 +34,117 @@
   --notice-line: #f3dca8;
   --notice-text: #7a4a00;
   --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --primary-line: #1d1d1b;         /* рамка главной кнопки */
+  --accent-btn-bg: #3b5bdb;        /* кнопка генерации (платная) */
+  --accent-btn-hover: #2f4bc4;
+  --accent-btn-fg: #ffffff;
+  --accent-btn-line: #3b5bdb;
+  --btn-bg: #ffffff;               /* обычная кнопка и её наведение */
+  --btn-line: #d6d4ce;
+  --btn-hover-bg: #f7f7f5;
+  --btn-hover-line: #d6d4ce;
+  --btn-hover-fg: #1d1d1b;
+  --sel-bg: #ffffff;               /* выбранное: задача в списке, шаг приветствия */
+  --sel-line: #d6d4ce;
+  --sel-fg: #1d1d1b;
+  --menubar: #ffffff;
   --ui: 1;                         /* масштаб интерфейса, задаётся в настройках */
   --menu-h: 30px;                  /* строка меню вверху */
   color-scheme: light;
 }
 
-/* Тёмная тема: выбрана явно или «как в системе» при тёмной системе. */
+/* Тёмная тема: выбрана явно или «как в системе» при тёмной системе.
+   Фон — сланцево-синий (не чёрный, чтобы работать и днём); все кнопки и
+   выбранные состояния — в сине-фиолетовом акценте, как пилюля «Грани». */
 :root[data-theme="dark"] {
-  --bg: #141517;
-  --panel: #1c1d20;
-  --panel-2: #24262a;
-  --line: #2e3035;
-  --line-strong: #3b3e44;
-  --text: #ececea;
-  --text-2: #b4b3ae;
-  --text-3: #86857f;
-  --accent: #7d95ff;
-  --accent-soft: #232a47;
+  --bg: #191f25;
+  --panel: #242b33;
+  --panel-2: #2c343d;
+  --line: #363e48;
+  --line-strong: #454e59;
+  --text: #edf0f4;
+  --text-2: #bec5cd;
+  --text-3: #9199a3;
+  --accent: #8da4ff;
+  --accent-soft: #2f385c;
   --ok: #4cc26a;
-  --ok-soft: #1b3122;
+  --ok-soft: #243f2a;
   --warn: #f0a73a;
-  --warn-soft: #36291a;
+  --warn-soft: #493319;
   --bad: #ff6b8e;
-  --bad-soft: #3a1d27;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.3);
-  --primary-bg: #ececea;
-  --primary-bg-hover: #ffffff;
-  --primary-fg: #141517;
-  --accent-hover: #93a7ff;
-  --accent-line: #3b4a8a;
-  --stage-1: #23252a;
-  --stage-2: #15161a;
-  --glass: rgba(28, 29, 32, 0.85);
+  --bad-soft: #4f272e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+  --primary-bg: #374274;
+  --primary-bg-hover: #404d89;
+  --primary-fg: #dae4ff;
+  --primary-line: #5a6dc0;
+  --accent-hover: #a5b9ff;
+  --accent-line: #4d5da4;
+  --accent-btn-bg: #374274;
+  --accent-btn-hover: #404d89;
+  --accent-btn-fg: #dae4ff;
+  --accent-btn-line: #5a6dc0;
+  --btn-bg: #2d3341;
+  --btn-line: #474f66;
+  --btn-hover-bg: #323952;
+  --btn-hover-line: #4d5da4;
+  --btn-hover-fg: #bfcfff;
+  --sel-bg: #2f385c;
+  --sel-line: #4d5da4;
+  --sel-fg: #8da4ff;
+  --menubar: #1b2128;
+  --stage-1: #2f3841;
+  --stage-2: #1a2027;
+  --glass: rgba(36, 43, 51, 0.88);
   --notice-line: #5a4320;
   --notice-text: #f6cf8e;
-  --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --seg-shadow: inset 0 0 0 1px #4d5da4;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #141517;
-    --panel: #1c1d20;
-    --panel-2: #24262a;
-    --line: #2e3035;
-    --line-strong: #3b3e44;
-    --text: #ececea;
-    --text-2: #b4b3ae;
-    --text-3: #86857f;
-    --accent: #7d95ff;
-    --accent-soft: #232a47;
+    --bg: #191f25;
+    --panel: #242b33;
+    --panel-2: #2c343d;
+    --line: #363e48;
+    --line-strong: #454e59;
+    --text: #edf0f4;
+    --text-2: #bec5cd;
+    --text-3: #9199a3;
+    --accent: #8da4ff;
+    --accent-soft: #2f385c;
     --ok: #4cc26a;
-    --ok-soft: #1b3122;
+    --ok-soft: #243f2a;
     --warn: #f0a73a;
-    --warn-soft: #36291a;
+    --warn-soft: #493319;
     --bad: #ff6b8e;
-    --bad-soft: #3a1d27;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.3);
-    --primary-bg: #ececea;
-    --primary-bg-hover: #ffffff;
-    --primary-fg: #141517;
-    --accent-hover: #93a7ff;
-    --accent-line: #3b4a8a;
-    --stage-1: #23252a;
-    --stage-2: #15161a;
-    --glass: rgba(28, 29, 32, 0.85);
+    --bad-soft: #4f272e;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+    --primary-bg: #374274;
+    --primary-bg-hover: #404d89;
+    --primary-fg: #dae4ff;
+    --primary-line: #5a6dc0;
+    --accent-hover: #a5b9ff;
+    --accent-line: #4d5da4;
+    --accent-btn-bg: #374274;
+    --accent-btn-hover: #404d89;
+    --accent-btn-fg: #dae4ff;
+    --accent-btn-line: #5a6dc0;
+    --btn-bg: #2d3341;
+    --btn-line: #474f66;
+    --btn-hover-bg: #323952;
+    --btn-hover-line: #4d5da4;
+    --btn-hover-fg: #bfcfff;
+    --sel-bg: #2f385c;
+    --sel-line: #4d5da4;
+    --sel-fg: #8da4ff;
+    --menubar: #1b2128;
+    --stage-1: #2f3841;
+    --stage-2: #1a2027;
+    --glass: rgba(36, 43, 51, 0.88);
     --notice-line: #5a4320;
     --notice-text: #f6cf8e;
-    --seg-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --seg-shadow: inset 0 0 0 1px #4d5da4;
     color-scheme: dark;
   }
 }
@@ -128,24 +172,24 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 /* ── кнопки ────────────────────────────────────────────────────────────── */
 .btn {
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
+  border: 1px solid var(--btn-line);
+  background: var(--btn-bg);
   border-radius: var(--radius-s);
   padding: 7px 12px;
   cursor: pointer;
   font-weight: 500;
-  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.06s;
 }
-.btn:hover { background: var(--panel-2); }
+.btn:hover { background: var(--btn-hover-bg); border-color: var(--btn-hover-line); color: var(--btn-hover-fg); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
-.btn.primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-fg); }
-.btn.primary:hover { background: var(--primary-bg-hover); }
-.btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn.accent:hover { background: var(--accent-hover); }
+.btn.primary { background: var(--primary-bg); border-color: var(--primary-line); color: var(--primary-fg); }
+.btn.primary:hover { background: var(--primary-bg-hover); border-color: var(--primary-line); color: var(--primary-fg); }
+.btn.accent { background: var(--accent-btn-bg); border-color: var(--accent-btn-line); color: var(--accent-btn-fg); }
+.btn.accent:hover { background: var(--accent-btn-hover); border-color: var(--accent-btn-line); color: var(--accent-btn-fg); }
 .btn.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
-.btn.ghost:hover { background: var(--panel-2); }
-.btn.danger { color: var(--bad); }
+.btn.ghost:hover { background: var(--btn-hover-bg); border-color: transparent; color: var(--btn-hover-fg); }
+.btn.danger, .btn.danger:hover { color: var(--bad); }
 .btn.wide { width: 100%; }
 .btn.big { padding: 11px 14px; font-size: 14px; }
 
@@ -167,7 +211,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 500;
   white-space: nowrap;
 }
-.seg button.on { background: var(--panel); color: var(--text); box-shadow: var(--seg-shadow); }
+.seg button:not(.on):hover { color: var(--btn-hover-fg); }
+.seg button.on { background: var(--sel-bg); color: var(--sel-fg); box-shadow: var(--seg-shadow); }
 .seg.full { display: flex; }
 .seg.full button { flex: 1; }
 
@@ -180,6 +225,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--text-2);
   font-weight: 500;
 }
+.chip-btn:not(.on):hover { background: var(--btn-hover-bg); border-color: var(--btn-hover-line); color: var(--btn-hover-fg); }
 .chip-btn.on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 
 /* ── левая колонка ─────────────────────────────────────────────────────── */
@@ -233,7 +279,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   width: 100%;
 }
 .item:hover { background: var(--panel-2); }
-.item.sel { background: var(--panel); border-color: var(--line-strong); box-shadow: var(--shadow); }
+.item.sel { background: var(--sel-bg); border-color: var(--sel-line); box-shadow: var(--shadow); }
 .item .thumb {
   width: 34px; height: 34px; border-radius: 7px; flex: none;
   background: var(--panel-2) center/cover no-repeat;
@@ -585,7 +631,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 600; font-size: 12.5px; color: var(--text-2); text-align: left;
 }
 .step:disabled { cursor: default; opacity: 0.5; }
-.step.on { border-color: var(--text); background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+.step.on { border-color: var(--primary-line); background: var(--sel-bg); color: var(--text); box-shadow: var(--shadow); }
 .step-n {
   width: 20px; height: 20px; border-radius: 50%; flex: none;
   display: grid; place-items: center; font-size: 11px;
@@ -674,7 +720,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   height: var(--menu-h);
   display: flex; align-items: stretch; gap: 1px;
   padding: 0 8px;
-  background: var(--panel);
+  background: var(--menubar);
   border-bottom: 1px solid var(--line);
 }
 .menu-title {
@@ -735,7 +781,7 @@ kbd {
   display: grid; place-items: center;
   border: 0; background: none; color: var(--text-2); cursor: pointer; position: relative;
 }
-.icon-btn:hover { background: var(--panel-2); color: var(--text); }
+.icon-btn:hover { background: var(--btn-hover-bg); color: var(--btn-hover-fg); }
 #open-settings.warn { color: var(--warn); }
 #open-settings.warn::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
 .acct-fal {

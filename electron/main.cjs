@@ -7,7 +7,7 @@
  * нужен ровно один мостик — выбрать папку системным диалогом (preload.cjs).
  */
 
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, nativeTheme } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -31,6 +31,17 @@ async function startServer() {
   console.log('[3DModelist] сервер:', url);
 }
 
+// Цвет окна до отрисовки страницы — по теме из настроек, иначе тёмная тема мигает светлым.
+function windowBackground() {
+  let theme = 'system';
+  try {
+    const s = JSON.parse(require('node:fs').readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8'));
+    theme = s.ui?.theme || 'system';
+  } catch { /* первый запуск — настроек ещё нет */ }
+  const dark = theme === 'dark' || (theme === 'system' && nativeTheme.shouldUseDarkColors);
+  return dark ? '#191f25' : '#eeeeec';   // --bg из src/style.css
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1500,
@@ -38,7 +49,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 680,
     title: '3DModelist',
-    backgroundColor: '#eeeeec',        // цвет фона страницы: окно не мигает белым
+    backgroundColor: windowBackground(),
     // Проверки (снимок, самопроверка) — в невидимом окне: не всплывают у человека на экране.
     show: !(process.env.MODELIST_SCREENSHOT || process.env.MODELIST_SELFTEST),
     paintWhenInitiallyHidden: true,

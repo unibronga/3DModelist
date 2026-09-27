@@ -1,0 +1,20 @@
+# Зависимости и сборка
+node_modules/
+dist/
+release/
+build/*
+!build/icon-source.png
+!build/icon.png
+
+# Рабочая кухня проекта: заметки сессий и настройки помощника — не для
+# репозитория. Только в корне: kit/CLAUDE.md и kit/.claude/ — часть приложения.
+/.claude/
+/CLAUDE.md
+/PLAN.md
+/SESSIONS.md
+
+# Системное
+.DS_Store
+*.log
+__pycache__/
+*.pyc

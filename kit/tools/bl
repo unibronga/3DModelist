@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+bl — запуск скрипта сцены в Blender с автоматически подмешанной lib/artist.py.
+
+    tools/bl scenes/lamp.py          # выполнить файл скрипта
+    tools/bl -c 'result = scene_stats()'
+    tools/bl --ping                  # проверка связи + версия Blender
+    tools/bl --raw scripts/x.py      # без прелюдии (голый bpy)
+    tools/bl scenes/<имя>.py --peek                    # + лист ракурсов после прогона
+    tools/bl scenes/x.py --peek --ref refs/x/front.png  # референс первой плиткой
+
+--peek снимает лист ракурсов (перед, 3/4, профиль, спина) в
+renders/<имя скрипта или его подпапки в scenes>/peek.png — визуальный чек после каждой правки.
+Путь листа печатается последней строкой: его надо ПРОЧИТАТЬ глазами.
+
+Всё из lib/artist.py доступно в скрипте без импортов; `bpy`, `math`,
+`mathutils`, `Vector` — тоже. Переменная `result` возвращается наружу.
+"""
+
+import argparse
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+
+from blender_bridge import BridgeError, execute  # noqa: E402
+
+PRELUDE_PATH = os.path.join(ROOT, "lib", "artist.py")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(add_help=True)
+    ap.add_argument("script", nargs="?", help="файл скрипта сцены")
+    ap.add_argument("-c", "--code", help="код строкой")
+    ap.add_argument("--ping", action="store_true")
+    ap.add_argument("--raw", action="store_true", help="не подмешивать lib/artist.py")
+    ap.add_argument("--peek", action="store_true", help="после скрипта снять лист ракурсов")
+    ap.add_argument("--ref", help="референс первой плиткой листа (с --peek)")
+    ap.add_argument("--views", default="front,q34,side,back",
+                    help="ракурсы листа через запятую: front,q34,side,back,top,below")
+    ap.add_argument("--zoom", help="крупный план: 'x,y,z,радиус' в метрах, например 0,0,1.55,0.2")
+    ap.add_argument("--engine", default="BLENDER_WORKBENCH",
+                    help="движок листа: BLENDER_WORKBENCH (форма) или BLENDER_EEVEE (свет, палитра)")
+    ap.add_argument("--timeout", type=float, default=float(os.environ.get("BLENDER_MCP_TIMEOUT", "900")))
+    args = ap.parse_args()
+
+    if args.ping:
+        body = "result = {'blender': bpy.app.version_string, 'file': bpy.data.filepath or '(без имени)', 'scene': scene_stats()}"
+    elif args.code:
+        body = args.code
+    elif args.script:
+        with open(args.script, encoding="utf-8") as fh:
+            body = fh.read()
+    else:
+        body = sys.stdin.read()
+
+    peek_path = None
+    if args.peek:
+        if args.raw:
+            print("--peek не работает с --raw: peek() живёт в lib/artist.py", file=sys.stderr)
+            return 2
+        name = "adhoc"
+        if args.script:
+            spath = os.path.abspath(args.script)
+            name = os.path.splitext(os.path.basename(spath))[0]
+            parent = os.path.basename(os.path.dirname(spath))
+            if os.path.dirname(os.path.dirname(spath)) == os.path.join(ROOT, "scenes"):
+                name = parent            # scenes/<проект>/build.py -> renders/<проект>/
+        peek_path = os.path.join(ROOT, "renders", name, "peek.png")
+        ref = os.path.abspath(args.ref) if args.ref else None
+        if ref and not os.path.exists(ref):
+            print(f"референс не найден: {ref}", file=sys.stderr)
+            return 2
+        views = tuple(v.strip() for v in args.views.split(",") if v.strip())
+        zoom = ""
+        if args.zoom:
+            zx, zy, zz, zr = (float(v) for v in args.zoom.split(","))
+            zoom = f", center=({zx}, {zy}, {zz}), radius={zr}"
+            peek_path = peek_path.replace("peek.png", "peek_zoom.png")
+        body += (
+            "\n\n# ── визуальный чек (tools/bl --peek) ──\n"
+            "try:\n    _script_result = result\nexcept NameError:\n    _script_result = None\n"
+            f"result = {{'script': _script_result, 'peek': peek({peek_path!r}, views={views!r}, "
+            f"ref={ref!r}, engine={args.engine!r}{zoom})}}\n"
+        )
+
+    if args.raw:
+        code = body
+    else:
+        with open(PRELUDE_PATH, encoding="utf-8") as fh:
+            prelude = fh.read()
+        # Прелюдия идёт первой строкой-в-строку, поэтому номера строк
+        # в трейсбеке скрипта смещены на её длину — печатаем смещение.
+        code = prelude + "\n\n# ── скрипт сцены ──\n" + body
+        offset = prelude.count("\n") + 3
+
+    try:
+        resp = execute(code, timeout=args.timeout)
+    except BridgeError as ex:
+        print(f"ОШИБКА МОСТА: {ex}", file=sys.stderr)
+        return 2
+
+    for key in ("stdout", "stderr"):
+        text = resp.get(key)
+        if text:
+            sys.stderr.write(text if text.endswith("\n") else text + "\n")
+
+    if resp.get("status") != "ok":
+        msg = str(resp.get("message", ""))
+        if not args.raw:
+            msg += f"\n(номера строк смещены на {offset} — столько занимает прелюдия lib/artist.py)"
+        print("ОШИБКА BLENDER:\n" + msg, file=sys.stderr)
+        return 1
+
+    import json
+    print(json.dumps(resp.get("result"), ensure_ascii=False, indent=2, default=str))
+    if peek_path:
+        print(f"\nКАДР: {peek_path}  <- прочитать глазами и назвать, что видно", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

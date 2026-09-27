@@ -1,0 +1,37 @@
+# Сборка установщика. Значок — build/icon.png, его готовит `npm run icon`
+# из build/icon-source.png.
+
+appId: com.unibronga.modelist3d
+productName: 3DModelist
+copyright: 3DModelist — reference in, low-poly model out
+
+directories:
+  output: release
+  buildResources: build
+
+# В приложение — собранная страница, сервер, оболочка и набор пайплайна.
+files:
+  - dist/**/*
+  - server/**/*
+  - electron/**/*
+  - kit/**/*
+  - package.json
+
+# Набор пайплайна копируется в рабочую папку и исполняется python/bash —
+# им нужны настоящие файлы, а не содержимое архива app.asar.
+asarUnpack:
+  - kit/**/*
+
+npmRebuild: false
+
+mac:
+  category: public.app-category.graphics-design
+  # Сертификата разработчика нет — подпись выключена явно.
+  identity: null
+  target:
+    - dmg
+    - zip
+
+dmg:
+  title: 3DModelist
+  artifactName: 3DModelist-${version}-${arch}.dmg

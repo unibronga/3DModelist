@@ -1,0 +1,83 @@
+# Сборка и выкладка готовых файлов.
+#
+# Запуск: пометить коммит тегом (git tag v0.1.0 && git push origin v0.1.0)
+# либо вручную кнопкой Run workflow. Пока собирается только macOS: агенту
+# нужны bash и python3, на Windows этот путь ещё не проверен.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write        # создать релиз и залить файлы
+
+jobs:
+  build:
+    name: Сборка macOS
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Зависимости
+        run: npm ci
+
+      # Логи сборочной машины видны только тому, кто вошёл в GitHub. Чтобы
+      # причина падения читалась снаружи, хвост лога уходит ОДНОЙ аннотацией.
+      - name: Собрать
+        shell: bash
+        run: |
+          set +e
+          npm run dist:mac > build.log 2>&1
+          code=$?
+          tail -n 25 build.log
+          if [ $code -ne 0 ]; then
+            summary=$(tail -c 3500 build.log | tr '\n' '~' | sed 's/~/ | /g')
+            echo "::error::[macos, code $code] $summary"
+            exit $code
+          fi
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false    # подписи нет — ключи в связке не искать
+
+      - name: Отложить собранное
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos
+          path: |
+            release/*.dmg
+            release/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Выложить релиз
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Забрать собранное
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Создать релиз и приложить файлы
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Описание — из docs/releases/<тег>.md, если он есть.
+        run: |
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "${GITHUB_REF_NAME}" artifacts/* --title "3DModelist ${GITHUB_REF_NAME}" --notes-file "$NOTES"
+          else
+            gh release create "${GITHUB_REF_NAME}" artifacts/* --title "3DModelist ${GITHUB_REF_NAME}" \
+              --notes "macOS build (.dmg, Apple Silicon). Not signed: right-click the app → Open → Open on first launch."
+          fi

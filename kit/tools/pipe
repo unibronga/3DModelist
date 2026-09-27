@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Отметка этапов пайплайна — их показывает 3DModelist внизу окна.
+
+    tools/pipe start 1 "форма: массы корпуса"
+    tools/pipe done  1 "пропорции 0.9 x 0.6 x 0.7 м"
+    tools/pipe skip  2 "подача не нужна: плоский материал"
+    tools/pipe show
+
+Задачу (`tools/pipe task "<название>"`) открывает сама студия, агенту это
+делать не нужно. Состояние — runs/current/status.json.
+"""
+
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "dashboard"))
+import pipeline as P                                          # noqa: E402
+
+STATES = {"start": "running", "done": "done", "skip": "skipped"}
+
+
+def show():
+    st = P.load("status.json") or P.blank_status()
+    if st.get("task"):
+        print(f"задача: {st['task']}\n")
+    for s in P.STAGES:
+        row = next(r for r in st["stages"] if r["n"] == s["n"])
+        mark = {"pending": "·", "running": "▶", "done": "✔", "skipped": "—"}[row["state"]]
+        print(f"{mark} {s['n']}. {s['title']:26} {s['skill']:17} {row['note']}")
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] == "show":
+        show()
+        return 0
+    cmd = sys.argv[1]
+    if cmd == "task":
+        if len(sys.argv) < 3:
+            print("не указано название задачи", file=sys.stderr)
+            return 2
+        P.set_task(sys.argv[2])
+        print(f"задача: {sys.argv[2]}")
+        return 0
+    if cmd not in STATES:
+        print(f"неизвестная команда: {cmd}; нужно start/done/skip/show", file=sys.stderr)
+        return 2
+    if len(sys.argv) < 3:
+        print("не указан номер этапа", file=sys.stderr)
+        return 2
+    n = int(sys.argv[2])
+    note = sys.argv[3] if len(sys.argv) > 3 else ""
+    P.set_stage(n, STATES[cmd], note)
+    stage = next(s for s in P.STAGES if s["n"] == n)
+    print(f"{cmd}: {n}. {stage['title']} ({stage['skill']}) {note}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

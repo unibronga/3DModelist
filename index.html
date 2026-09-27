@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3DModelist</title>
+  <link rel="icon" href="./src/app-icon.png" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ── слева: задачи и библиотека ─────────────────────────────── -->
+    <aside class="side">
+      <div class="brand">
+        <img class="logo" src="./src/app-icon.png" alt="" />
+        <div>
+          <div class="brand-name">3DModelist</div>
+          <div class="brand-sub">референс → low-poly <span id="version"></span></div>
+        </div>
+      </div>
+      <div class="blender" id="blender"><span class="dot"></span><span class="txt">Blender…</span></div>
+      <button class="btn primary wide" id="new-task">＋ Новая модель</button>
+
+      <div class="side-head">Задачи</div>
+      <nav class="list" id="tasks"></nav>
+
+      <div class="side-head">Библиотека</div>
+      <nav class="list" id="library"></nav>
+
+      <div class="side-foot">
+        <button class="btn ghost wide" id="open-settings">⚙ Настройки</button>
+      </div>
+    </aside>
+
+    <!-- ── центр: модель ───────────────────────────────────────────── -->
+    <main class="stage">
+      <div class="toolbar">
+        <div class="seg" id="view-mode">
+          <button data-mode="material" class="on" title="Цвета модели, матово">Материалы</button>
+          <button data-mode="clay" title="Серая глина: форма без цвета">Глина</button>
+          <button data-mode="wire" title="Глина и сетка">Сетка</button>
+        </div>
+        <button class="chip-btn on" id="flat" title="Плоские грани, как в low-poly">Грани</button>
+        <button class="chip-btn" id="fit" title="Вписать модель в кадр">Кадр</button>
+      </div>
+      <div class="model-info" id="model-info"></div>
+      <div class="viewport" id="viewport">
+        <div class="empty" id="empty">
+          <div class="empty-title">Здесь появится модель</div>
+          <div class="empty-sub">Создай задачу справа или открой модель из библиотеки</div>
+        </div>
+      </div>
+
+      <section class="dock" id="dock" hidden>
+        <div class="stages" id="stages"></div>
+        <div class="dock-row">
+          <div class="frames" id="frames"></div>
+        </div>
+        <div class="outputs" id="outputs"></div>
+      </section>
+    </main>
+
+    <!-- ── справа: заказ или лента задачи ──────────────────────────── -->
+    <aside class="panel" id="panel"></aside>
+  </div>
+
+  <div class="lightbox" id="lightbox" hidden></div>
+  <div class="modal" id="modal" hidden></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

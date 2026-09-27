@@ -18,7 +18,7 @@ import { EFFORTS, runTurn, stopTurn, stopAll, busyTask, firstPrompt, testClaude 
 import { versions, validModel, canModel } from './models.mjs';
 import { UserError, errBody } from './errors.mjs';
 import { GENERATORS, genById, submit, watch, testFal, falKeySource } from './fal.mjs';
-import { library, taskMedia, refsTree, trashModel } from './library.mjs';
+import { library, taskMedia, refsTree, trashModel, trashTask } from './library.mjs';
 import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
@@ -278,6 +278,12 @@ async function api(req, res, url) {
     const sub = parts[3];
 
     if (!sub && m === 'GET') return send(res, 200, taskView(task));
+    // Удалить задачу (в Корзину) — пока агент не работает.
+    if (!sub && m === 'DELETE') {
+      if (busyTask() === id || starting === id) return send(res, 409, errBody(new UserError('busy')));
+      const r = trashTask(id);
+      return r.ok ? send(res, 200, r) : send(res, 400, errBody(new UserError(r.code)));
+    }
     if (!sub && m === 'PATCH') {
       const b = await readBody(req);
       const t = patchTask(id, (x) => {

@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { ws } from './store.mjs';
+import { ws, tasksDir, loadTask } from './store.mjs';
 
 export const MODEL_EXT = ['.glb', '.gltf', '.fbx', '.obj'];
 const IMG_EXT = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -67,6 +67,23 @@ export function trashModel(name) {
     moved.push(rel);
   }
   return { ok: true, moved };
+}
+
+// Задачу — в Корзину macOS: runs/studio/<id> (переписка, версии, метки).
+// Готовые файлы модели, референсы и скрипт сцены остаются в рабочей папке.
+export function trashTask(id) {
+  const dir = path.join(tasksDir(), id);
+  if (!/^[\w-]+$/.test(id) || !fs.existsSync(dir)) return { ok: false, code: 'noTask' };
+  const trash = path.join(os.homedir(), '.Trash');
+  if (process.platform !== 'darwin' || !fs.existsSync(trash)) return { ok: false, code: 'trashUnsupported' };
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const name = (loadTask(id)?.slug || id).replace(/[^\w.-]+/g, '_');
+  try {
+    fs.renameSync(dir, path.join(trash, `3DModelist task ${name} ${stamp}`));
+  } catch {
+    return { ok: false, code: 'trashUnsupported' };      // другой диск — в Корзину не переносится
+  }
+  return { ok: true };
 }
 
 // Цели из спеки — для сверки модели в окне: габариты (Ш × Г × В, в метрах) и

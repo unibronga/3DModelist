@@ -30,16 +30,14 @@ reference from four angles, and export to `.blend` + GLB.
 
 ## What you see
 
-- **The model** in the middle — orbit it, switch between colors, grey clay,
-  and clay with wireframe. Everything is shown matte: gloss on flat facets
+- **The model** takes the whole middle — orbit it, switch between colors, grey
+  clay, and clay with wireframe. Everything is shown matte: gloss on flat facets
   reads as a defect.
-- **Stages** at the bottom: spec → form → look → review → delivery, with
-  timers and the agent's notes.
-- **Frames** the agent renders after every change, as they appear.
-- **Live model and versions.** Every time the agent reruns its scene script,
+- **Live model and history.** Every time the agent reruns its scene script,
   the studio exports a quick snapshot from Blender: the model shows up in 3D
-  while it is being built, and each step stays as a version (v1, v2…). Open
-  any version from the same camera angle, or ask the agent to restore it.
+  while it is being built, and each step stays as a version in **History**
+  (the clock button on the right). Open any version from the same camera angle,
+  or ask the agent to restore it.
 - **Marks on the model.** Press **Mark** (M), click a part — it is highlighted
   under the cursor — and type what to fix. Marks go to the agent with your next
   message: the part's name, the point in Blender coordinates and a snapshot of
@@ -52,8 +50,12 @@ reference from four angles, and export to `.blend` + GLB.
 - **Numbers against the spec**: size (width × depth × height, as in Blender) and
   triangles above the model turn green when they match the spec and orange when
   they don't.
-- **The chat** with the agent on the right. It stops at the spec and waits for
-  your "ok"; after that it shows frames and keeps going until you say stop.
+- **The chat** with the agent on the right, under the task's name and a plain
+  status ("Agent is working…", "Waiting for your reply"). The agent stops at the
+  spec and waits for your "ok", then keeps going until you say stop. How the
+  model is built (agent or generator, which models) folds into one line above
+  the chat; downloads, the spec, the agent's frames and **Delete task** are in
+  the task's ⋯ menu (deleted tasks go to the Trash; finished files stay).
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how
   hard it thinks, and an optional reviewer (any of them, Haiku included) that

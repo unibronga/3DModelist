@@ -61,6 +61,8 @@ const S = {
   shownVersion: null,     // номер версии в окне (живая модель агента), иначе null
   autoFollow: true,       // сам переключаться на новую модель задачи
   framesKey: '',
+  howOpen: new Set(),     // задачи, где «Как строится» раскрыли руками
+  howClosed: new Set(),   // …и где свернули до старта
   draft: freshDraft(),
 };
 
@@ -113,6 +115,24 @@ $('#pin').addEventListener('click', () => togglePinMode());
 // Инструменты окна: референс задачи поверх модели, части, ракурсы, пол, человек, свет.
 const tools = new Tools(viewer, $('#viewport'), {
   refs: () => (S.task?.refs || []).map((p) => fileUrl(p)),
+  history: {
+    items: () => historyItems().map((x) => ({ ...x, thumbUrl: x.thumb && fileUrl(x.thumb) })),
+    shown: () => S.shown,
+    busy: () => !!S.task?.running,
+    // Последнюю версию — с автослежением за новыми; старую — «вручную».
+    pick: (x) => {
+      const newest = historyItems()[0];
+      S.autoFollow = x.key === newest?.key;
+      showModel(x.path, { version: x.version, manual: !S.autoFollow });
+    },
+    restore: async (n) => {
+      try {
+        await api(`/tasks/${S.task.id}/agent`, { method: 'POST', body: { restore: n } });
+        S.autoFollow = true;                   // восстановленная версия придёт новой — показать её
+        await refreshTask();
+      } catch (e) { toast(errText(e), true); }
+    },
+  },
   onChange: () => {},
 });
 
@@ -168,8 +188,7 @@ async function showModel(rel, { manual = false, version = null } = {}) {
   }
   if (viewer.root) tools.modelLoaded();
   renderModelInfo();
-  renderOutputs();
-  renderVersions(true);
+  tools.renderHistory();
   renderLibrary();
 }
 
@@ -242,14 +261,62 @@ const routeName = (r) => t(r === 'generator' ? 'route.generator.short' : 'route.
 
 function renderTasks() {
   const box = $('#tasks');
-  box.replaceChildren(...(S.tasks.length ? S.tasks.map((tk) => el('button', {
-    class: 'item' + (S.sel === tk.id ? ' sel' : ''),
-    onclick: () => selectTask(tk.id),
-  },
-  el('div', { class: 'body' },
-    el('div', { class: 't' }, tk.name),
-    el('div', { class: 's' }, routeName(tk.route) + (tk.spent_usd ? ' · ' + money(tk.spent_usd) : ''))),
-  taskBadge(tk))) : [el('div', { class: 'none' }, t('side.noTasks'))]));
+  box.replaceChildren(...(S.tasks.length ? S.tasks.map((tk) => el('div', { class: 'item-wrap' },
+    el('button', {
+      class: 'item' + (S.sel === tk.id ? ' sel' : ''),
+      onclick: () => selectTask(tk.id),
+    },
+    el('div', { class: 'body' },
+      el('div', { class: 't' }, tk.name),
+      el('div', { class: 's' }, routeName(tk.route) + (tk.spent_usd ? ' · ' + money(tk.spent_usd) : ''))),
+    taskBadge(tk)),
+    el('button', { class: 'item-del', title: t('task.delete'), onclick: () => deleteTask(tk) }, trashIcon())))
+    : [el('div', { class: 'none' }, t('side.noTasks'))]));
+}
+
+const trashIcon = () => el('span', { html: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>' });
+
+// Короткое имя модели для строки «Как строится».
+const modelShort = (id) => FAMILY_NAME[id] || (S.meta?.models || []).find((m) => m.id === id)?.label || id || '';
+
+// Меню «⋯» в шапке задачи: скачать, спека, кадры агента, папка, готово, удалить.
+function taskMenu(anchor, tk) {
+  document.querySelector('.pop-menu')?.remove();
+  const latest = tk.media?.models?.[0]?.path || tk.versions?.[tk.versions.length - 1]?.glb;
+  const frames = (tk.media?.frames || []).map((f) => f.path);
+  const item = (label, action, { disabled = false, danger = false } = {}) => el('button', {
+    class: 'menu-item' + (danger ? ' danger' : ''), disabled,
+    onclick: () => { menu.remove(); action(); },
+  }, el('span', {}), el('span', {}, label), el('span', {}));
+  const menu = el('div', { class: 'pop-menu' },
+    item(t('menu.downloadModel'), () => download(latest), { disabled: !latest }),
+    item(t('task.openSpec'), () => openDoc(tk.media.spec), { disabled: !tk.media?.spec }),
+    item(t('menu.frames'), () => openImages(frames, 0), { disabled: !frames.length }),
+    item(t('menu.showTaskFolder'), () => reveal(taskFolder()), { disabled: !host?.openPath }),
+    el('div', { class: 'menu-sep' }),
+    tk.state === 'done'
+      ? item(t('task.reopen'), () => patch({ state: 'open' }))
+      : item('✓ ' + t('task.done'), () => patch({ state: 'done' })),
+    item(t('task.delete'), () => deleteTask(tk), { danger: true, disabled: !!tk.running }));
+  const r = anchor.getBoundingClientRect();
+  const k = getScale();
+  menu.style.top = (r.bottom / k + 4) + 'px';
+  menu.style.right = ((window.innerWidth - r.right) / k) + 'px';
+  document.body.append(menu);
+  const off = (e) => { if (!menu.contains(e.target) && e.target !== anchor) { menu.remove(); document.removeEventListener('pointerdown', off, true); } };
+  setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
+}
+
+// Удалить задачу: переписка и версии — в Корзину, готовые файлы модели остаются.
+async function deleteTask(tk) {
+  if (tk.agent_state === 'running') { toast(errText({ code: 'busy' }), true); return; }
+  if (!confirm(t('task.delete.confirm', { name: tk.name }))) return;
+  try {
+    await api(`/tasks/${tk.id}`, { method: 'DELETE' });
+    toast(t('task.deleted', { name: tk.name }));
+    if (S.sel === tk.id) await selectTask(null);
+    await refreshTasks();
+  } catch (e) { toast(errText(e), true); }
 }
 
 function renderLibrary() {
@@ -603,9 +670,7 @@ function renderProcess() {
     return;
   }
 
-  // Ход агента: этап с табло, последнее действие, время хода.
-  const rows = tk.pipe?.stages || [];
-  const cur = rows.find((r) => r.state === 'running');
+  // Ход агента: последнее действие и время хода — без внутренних этапов.
   let action = '';
   for (let i = S.events.length - 1; i >= 0; i--) {
     const ev = S.events[i];
@@ -618,15 +683,10 @@ function renderProcess() {
     el('div', { class: 'proc-head' },
       el('span', { class: 'spinner' }),
       el('div', {},
-        el('div', { class: 'proc-title' }, cur ? t('proc.agent.stage', { stage: t('stage.' + cur.n + '.title') }) : t('proc.agent.title')),
+        el('div', { class: 'proc-title' }, t('proc.agent.title')),
         el('div', { class: 'proc-sub' }, action ? t('proc.agent.action', { action }) : t('proc.agent.starting'))),
       el('div', { class: 'proc-time' }, clock(now - since))),
     el('div', { class: 'bar indet' }, el('div', { class: 'bar-fill' })),
-    stepRow(S.meta.stages.map((s) => {
-      const r = rows.find((x) => x.n === s.n);
-      const state = !r ? 'wait' : r.state === 'done' ? 'done' : r.state === 'skipped' ? 'skip' : r.state === 'running' ? 'active' : 'wait';
-      return [t('stage.' + s.n), state];
-    })),
     el('div', { class: 'proc-note' }, t('proc.agent.note')));
 }
 setInterval(() => { try { renderProcess(); } catch { /* до загрузки */ } }, 1000);
@@ -638,32 +698,46 @@ function renderTaskPanel() {
   const running = tk.running;
   const started = !!tk.agent?.session_id;
 
-  const sub = [t('task.folder', { slug: tk.slug }), routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })];
+  // Шапка: имя, понятный статус и меню действий; под ней — что дал человек.
+  const genBusy = ['queued', 'running', 'downloading'].includes(tk.gen?.state);
+  const status = running ? ['run', t('status.running')]
+    : genBusy ? ['run', t('status.gen')]
+      : tk.state === 'done' ? ['done', t('status.done')]
+        : started ? ['wait', t('status.waiting')]
+          : tk.route === 'generator' && tk.gen?.state === 'done' ? ['wait', t('status.genDone')] : ['', t('status.new')];
+  const sub = [routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })];
   if (tk.limit5h != null) sub.push(t('task.limit', { p: Math.round(tk.limit5h * 100) }));
+  const menuBtn = el('button', { class: 'icon-btn', title: t('task.menu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
+    el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>' }));
   const head = el('div', { class: 'panel-head' },
-    el('div', { class: 'row between' },
-      el('div', { class: 'panel-title' }, tk.name),
-      tk.state === 'done'
-        ? el('button', { class: 'btn ghost', onclick: () => patch({ state: 'open' }) }, t('task.reopen'))
-        : el('button', { class: 'btn ghost', title: t('task.done.hint'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('task.done'))),
-    el('div', { class: 'panel-sub' }, sub.join(' · ')));
+    el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, tk.name), menuBtn),
+    el('div', { class: 'task-status' }, el('span', { class: 'badge ' + status[0] }, status[1]), el('span', { class: 'panel-sub' }, sub.join(' · '))),
+    (tk.refs || []).length > 0 && el('div', { class: 'refs-mini' }, ...(tk.refs || []).map((p, i) => el('div', {
+      class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(tk.refs, i),
+    }))));
 
-  const refs = el('div', { class: 'refs' }, ...(tk.refs || []).map((p, i) => el('div', {
-    class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(tk.refs, i),
-  })));
-
-  const blocks = [refs];
-  if (tk.media?.spec) blocks.push(el('button', { class: 'btn wide', onclick: () => openDoc(tk.media.spec) }, t('task.openSpec')));
-  // Тот же выбор, что в форме: кто строит форму. Сменить можно и потом.
-  blocks.push(el('div', { class: 'field' },
-    el('div', { class: 'label' }, t('form.route')),
-    segment([
-      ['script', t('route.script'), t('route.script.hint')],
-      ['generator', t('route.generator'), t('route.generator.hint')],
-    ], tk.route, (v) => { if (!running && v !== tk.route) patch({ route: v }); }, 'full')));
-  if (tk.route === 'generator') blocks.push(genCard(tk));
-  blocks.push(agentBlock(tk.agent, (p) => patch({ agent: { ...tk.agent, ...p } }),
-    t(tk.route === 'generator' ? 'agents.afterGen' : 'agents.build')));
+  // «Как строится» — выбор пути, генератор и агенты. До старта раскрыто,
+  // потом свёрнуто в одну строку: главное место — у чата.
+  const how = el('details', { class: 'howto', open: S.howOpen.has(tk.id) || (!started && !S.howClosed.has(tk.id)) },
+    el('summary', {},
+      el('span', { class: 'how-title' }, t('how.title')),
+      el('span', { class: 'how-sum' }, tk.route === 'generator'
+        ? t('how.sum.gen', { gen: tk.gen?.label || genMeta(S.genDraft?.model || 'tripo3d/p2/image-to-3d')?.label || '', model: modelShort(tk.agent?.model) })
+        : t('how.sum.script', { model: modelShort(tk.agent?.model) }))),
+    el('div', { class: 'how-body' },
+      el('div', { class: 'field' },
+        el('div', { class: 'label' }, t('form.route')),
+        segment([
+          ['script', t('route.script'), t('route.script.hint')],
+          ['generator', t('route.generator'), t('route.generator.hint')],
+        ], tk.route, (v) => { if (!running && v !== tk.route) patch({ route: v }); }, 'full')),
+      tk.route === 'generator' && genCard(tk),
+      agentBlock(tk.agent, (p) => patch({ agent: { ...tk.agent, ...p } }),
+        t(tk.route === 'generator' ? 'agents.afterGen' : 'agents.build'))));
+  how.addEventListener('toggle', () => {
+    if (how.open) { S.howOpen.add(tk.id); S.howClosed.delete(tk.id); } else { S.howOpen.delete(tk.id); S.howClosed.add(tk.id); }
+  });
+  const blocks = [how];
   blocks.push(el('div', { class: 'feed', id: 'feed' }));
 
   const ta = el('textarea', {
@@ -695,8 +769,7 @@ function renderTaskPanel() {
     el('div', { class: 'pins-list', id: 'pins-list', hidden: true }),
     !running && started && el('div', { class: 'quick' },
       el('button', { class: 'btn', onclick: () => send(t('quick.ok.msg')) }, t('quick.ok')),
-      el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go')),
-      el('button', { class: 'btn', onclick: () => send(t('quick.show.msg')) }, t('quick.show'))),
+      el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go'))),
     !running && ta,
     !running && (started
       ? el('button', { class: 'btn primary', onclick: () => send() }, t('chat.send'))
@@ -835,94 +908,30 @@ function renderPanel() {
   else renderNewForm();
 }
 
-// ── низ: этапы, кадры, выдача ─────────────────────────────────────────────
-function renderDock() {
+// ── история модели ─────────────────────────────────────────────────────
+// Нижней панели нет (этапы, кадры, файлы путали владельца, 27.09): модель
+// занимает всё поле, а версии и готовые файлы — в «Истории» справа, как в
+// Tripo Studio. Кадры агента — в меню «Задача», скачать — в меню задачи.
+function historyItems() {
   const tk = S.task;
-  $('#dock').hidden = !tk;
-  if (!tk) return;
-
-  $('#frames').dataset.empty = t('dock.noFrames');
-  const rows = tk.pipe?.stages || [];
-  $('#stages').replaceChildren(...S.meta.stages.map((s) => {
-    const r = rows.find((x) => x.n === s.n) || { state: 'pending', note: '' };
-    const mark = { done: '✓', running: '▸', skipped: '–' }[r.state] || s.n;
-    let time = '';
-    if (r.started_at) {
-      const end = r.finished_at || Date.now() / 1000;
-      const sec = Math.max(0, Math.round(end - r.started_at));
-      time = sec >= 60 ? t('time.min', { n: Math.floor(sec / 60) }) : t('time.sec', { n: sec });
-    }
-    return el('div', { class: `st ${r.state}${s.gate ? ' gate' : ''}`, title: r.note || t('stage.' + s.n + '.title') },
-      el('div', { class: 'h', 'data-gate': t('stage.gate') }, el('span', { class: 'mark' }, mark), t('stage.' + s.n)),
-      el('div', { class: 'n' }, r.note || (r.state === 'pending' ? t('stage.pending') : time)));
+  if (!tk) return [];
+  const items = (tk.versions || []).map((v) => ({
+    key: v.glb, path: v.glb, version: v.n, t: v.t, thumb: v.thumb,
+    title: t('viewer.ver', { n: v.n }), sub: t('ver.tip', { n: v.n, time: hhmm(v.t), tris: num(v.tris) }).replace(/^[^·]*·\s*/, ''),
   }));
-
-  const frames = tk.media?.frames || [];
-  const key = frames.map((f) => f.path + f.mtime).join('|');
-  if (key !== S.framesKey) {
-    S.framesKey = key;
-    const list = frames.map((f) => f.path);
-    $('#frames').replaceChildren(...frames.map((f, i) => el('img', {
-      src: fileUrl(f.path) + '?v=' + Math.round(f.mtime), title: f.path, loading: 'lazy',
-      onclick: () => openImages(list, i),
-    })));
+  for (const m of tk.media?.models || []) {
+    const gen = m.path.includes('/gen_');
+    const shot = gen && (tk.media.frames || []).find((f) => f.path.startsWith(m.path.slice(0, m.path.lastIndexOf('/') + 1)));
+    items.push({ key: m.path, path: m.path, version: null, t: m.mtime, thumb: shot?.path || null,
+      title: gen ? t('hist.gen') : t('hist.file'), sub: base(m.path) });
   }
-  renderOutputs();
-  renderVersions();
+  return items.sort((a, b) => b.t - a.t);
 }
+const hhmm = (sec) => new Date(sec * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// Версии живой модели: снимок после каждого прогона скрипта агентом.
-// Щелчок — открыть версию; на старой — «Вернуть версию N» (агент восстановит
-// её скрипт) и «К последней».
-let versionsKey = '';
-function renderVersions(force = false) {
-  const box = $('#versions');
-  const tk = S.task;
-  const vers = tk?.versions || [];
-  box.hidden = !vers.length;
-  const last = vers[vers.length - 1];
-  const key = JSON.stringify([tk?.id, vers.map((v) => v.n), S.shownVersion, !!tk?.running, getLang()]);
-  if (!vers.length || (!force && key === versionsKey)) return;
-  versionsKey = key;
-  const old = S.shownVersion != null && S.shownVersion !== last.n;
-  const list = el('div', { class: 'ver-list' }, ...vers.map((v) => el('button', {
-    class: 'ver' + (v.n === S.shownVersion ? ' on' : ''),
-    style: v.thumb ? `background-image:url("${fileUrl(v.thumb)}")` : '',
-    title: t('ver.tip', { n: v.n, time: new Date(v.t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), tris: num(v.tris) }),
-    onclick: () => { S.autoFollow = v.n === last.n; showModel(v.glb, { version: v.n }); },
-  }, el('span', {}, 'v' + v.n))));
-  box.replaceChildren(
-    el('span', { class: 'ver-label' }, t('ver.title')),
-    list,
-    ...(!old ? [] : [el('div', { class: 'ver-actions' },
-      el('button', {
-        class: 'btn', disabled: !!tk.running, title: t('ver.restore.hint'),
-        onclick: async () => {
-          try {
-            await api(`/tasks/${tk.id}/agent`, { method: 'POST', body: { restore: S.shownVersion } });
-            S.autoFollow = true;                 // восстановленная версия придёт новой — показать её
-            await refreshTask();
-          } catch (e) { toast(errText(e), true); }
-        },
-      }, t('ver.restore', { n: S.shownVersion })),
-      el('button', { class: 'btn ghost', onclick: () => { S.autoFollow = true; showModel(last.glb, { version: last.n }); } }, t('ver.latest') + ' ›'))]));
-  list.scrollLeft = list.scrollWidth;
-}
-
-function renderOutputs() {
-  const tk = S.task;
-  const box = $('#outputs');
-  if (!tk) { box.replaceChildren(); return; }
-  const items = (tk.media?.models || []).map((m) => el('span', {
-    class: 'out' + (m.path === S.shown ? ' sel' : ''), title: m.path,
-    onclick: (e) => { if (e.target.tagName !== 'A') showModel(m.path, { manual: true }); },
-  }, base(m.path), el('a', { href: fileUrl(m.path, true), title: t('out.download') }, '↓')));
-  if (tk.media?.blend) {
-    items.push(el('span', { class: 'out', title: tk.media.blend }, base(tk.media.blend),
-      el('a', { href: fileUrl(tk.media.blend, true), title: t('out.download') }, '↓')));
-  }
-  box.replaceChildren(...items);
-}
+// Сохранено имя, чтобы не трогать остальной код: док теперь — только история.
+function renderDock() { tools.renderHistory(); }
+function renderOutputs() { tools.renderHistory(); }
 
 // ── выбор и опрос ─────────────────────────────────────────────────────────
 async function selectTask(id) {
@@ -1167,6 +1176,7 @@ const menuBar = new MenuBar($('#menubar'), [
     '-',
     { label: () => t('rail.ref'), hint: 'R', checked: () => tools.state.ref, disabled: () => !S.task?.refs?.length, action: () => tools.toggle('ref') },
     { label: () => t('rail.parts'), hint: 'P', checked: () => tools.state.parts, action: () => tools.toggle('parts') },
+    { label: () => t('hist.hint'), checked: () => tools.state.history, action: () => tools.toggle('history') },
     { label: () => t('rail.grid'), hint: 'G', checked: () => tools.state.grid, action: () => tools.toggle('grid') },
     { label: () => t('rail.human'), hint: 'H', checked: () => tools.state.human, action: () => tools.toggle('human') },
     '-',
@@ -1185,8 +1195,11 @@ const menuBar = new MenuBar($('#menubar'), [
     { label: () => t('menu.downloadModel'), disabled: () => !S.task?.media?.models?.length, action: () => download(S.task.media.models[0].path) },
     { label: () => t('menu.downloadBlend'), disabled: () => !S.task?.media?.blend, action: () => download(S.task.media.blend) },
     '-',
+    { label: () => t('menu.frames'), disabled: () => !S.task?.media?.frames?.length, action: () => openImages(S.task.media.frames.map((f) => f.path), 0) },
+    '-',
     { label: () => t('task.done'), disabled: () => !S.task || S.task.state === 'done', action: () => patch({ state: 'done' }) },
     { label: () => t('task.reopen'), disabled: () => !S.task || S.task.state !== 'done', action: () => patch({ state: 'open' }) },
+    { label: () => t('task.delete'), disabled: () => !S.task || !!S.task.running, action: () => deleteTask(S.task) },
   ] },
   { title: () => 'Blender', items: [
     { label: () => t('bl.openWindow'), action: async () => {

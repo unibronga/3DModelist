@@ -10,6 +10,7 @@ import { t, num } from './i18n.js';
 const ICONS = {
   ref: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
   parts: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
   views: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
   grid: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
   human: '<circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M8 10h8M12 14l-3 7M12 14l3 7"/>',
@@ -26,14 +27,17 @@ const keep = (k, v) => { try { localStorage.setItem('modelist.view.' + k, JSON.s
 
 export class Tools {
   // refs() — адреса картинок референса текущей задачи (пусто — нечего показать).
-  constructor(viewer, host, { refs = () => [], onChange = () => {} } = {}) {
+  // history — версии и готовые файлы задачи: items(), shown(), pick(item),
+  // restore(n), busy() — даёт main.js.
+  constructor(viewer, host, { refs = () => [], history = null, onChange = () => {} } = {}) {
     this.viewer = viewer;
     this.host = host;
     this.refs = refs;
+    this.history = history;
     this.onChange = onChange;
     this.open = null;                   // открытое окошко: views | light
     this.state = {
-      ref: false, parts: false,
+      ref: false, parts: false, history: false,
       grid: load('grid', false), human: load('human', false),
       light: load('light', { power: 1, angle: 0 }), spin: false,
     };
@@ -48,7 +52,8 @@ export class Tools {
     this.pop = el('div', { class: 'rail-pop', hidden: true });
     this.refPanel = el('div', { class: 'refpanel', hidden: true });
     this.partsPanel = el('div', { class: 'partspanel', hidden: true });
-    this.layer = el('div', { class: 'tools-layer' }, this.rail, this.pop, this.refPanel, this.partsPanel);
+    this.histPanel = el('div', { class: 'partspanel histpanel', hidden: true });
+    this.layer = el('div', { class: 'tools-layer' }, this.rail, this.pop, this.refPanel, this.partsPanel, this.histPanel);
     host.append(this.layer);
 
     viewer.setLight(this.state.light);
@@ -67,6 +72,9 @@ export class Tools {
 
   toggle(name, on = !this.state[name]) {
     this.state[name] = on;
+    // Части и история стоят на одном месте — открыта одна из двух.
+    if (on && name === 'parts') this.state.history = false;
+    if (on && name === 'history') this.state.parts = false;
     this.open = null;                   // окошко ракурсов/света закрывается при любом другом инструменте
     if (name === 'grid') { this.viewer.setGrid(on); keep('grid', on); }
     if (name === 'human') { this.viewer.setHuman(on); keep('human', on); }
@@ -83,6 +91,7 @@ export class Tools {
     this.rail.replaceChildren(
       b('ref', hasRefs ? t('rail.ref') : t('ref.none'), this.state.ref, () => this.toggle('ref'), !hasRefs),
       b('parts', t('rail.parts'), this.state.parts, () => this.toggle('parts')),
+      b('history', t('hist.hint'), this.state.history, () => this.toggle('history')),
       el('div', { class: 'rail-sep' }),
       b('views', t('rail.views'), this.open === 'views', () => { this.open = this.open === 'views' ? null : 'views'; this.render(); }),
       b('grid', t('rail.grid'), this.state.grid, () => this.toggle('grid')),
@@ -93,13 +102,45 @@ export class Tools {
     this.drawRef();
     this.partsPanel.hidden = !this.state.parts;
     if (this.state.parts) this.drawParts();
+    this.renderHistory();
+  }
+
+  // ── история модели: версии и готовые файлы задачи, новые сверху ─────────
+  renderHistory() {
+    const h = this.history;
+    this.histPanel.hidden = !this.state.history || !h;
+    if (this.histPanel.hidden) return;
+    const items = h.items();
+    const shown = h.shown();
+    const newestVer = items.find((x) => x.version != null);
+    const cur = items.find((x) => x.path === shown);
+    const old = cur && cur.version != null && newestVer && cur.version !== newestVer.version;
+    const key = JSON.stringify([items.map((x) => x.key + x.t), shown, h.busy()]);
+    if (key === this.histKey) return;
+    this.histKey = key;
+    this.histPanel.replaceChildren(...[
+      el('div', { class: 'parts-head' },
+        el('span', { class: 'pop-title' }, t('hist.title')),
+        el('button', { class: 'icon-mini', title: t('common.close'), onclick: () => this.toggle('history', false) }, '✕')),
+      items.length
+        ? el('div', { class: 'parts-list' }, ...items.map((x) => el('div', {
+          class: 'hist' + (x.path === shown ? ' on' : ''),
+          onclick: () => h.pick(x),
+        },
+        el('div', { class: 'hist-thumb', style: x.thumb ? `background-image:url("${x.thumbUrl}")` : '' }),
+        el('div', { class: 'hist-body' }, el('div', { class: 'hist-t' }, x.title), el('div', { class: 'hist-s' }, x.sub)))))
+        : el('div', { class: 'muted hist-empty' }, t('hist.empty')),
+      old && el('div', { class: 'hist-actions' },
+        el('button', { class: 'btn primary', disabled: h.busy(), title: t('ver.restore.hint'), onclick: () => h.restore(cur.version) }, t('ver.restore', { n: cur.version })),
+        el('button', { class: 'btn ghost', onclick: () => h.pick(newestVer) }, t('ver.latest') + ' ›')),
+    ].filter(Boolean));
   }
 
   // ── ракурсы и свет — окошко слева от кнопки ─────────────────────────────
   drawPop() {
     this.pop.hidden = !this.open;
     if (!this.open) return;
-    const btn = this.rail.querySelectorAll('.rail-btn')[this.open === 'views' ? 2 : 5];
+    const btn = this.rail.querySelectorAll('.rail-btn')[this.open === 'views' ? 3 : 6];
     this.pop.style.top = this.rail.offsetTop + (btn?.offsetTop || 0) + 'px';
     if (this.open === 'views') {
       const v = (name) => el('button', { class: 'btn', onclick: () => this.viewer.setView(name) }, t('view.' + name));

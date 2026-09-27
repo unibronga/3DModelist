@@ -48,13 +48,14 @@ reference from four angles, and export to `.blend` + GLB.
 |---|---|---|
 | **Claude Code** (`claude` CLI) | the agent itself | [install guide](https://docs.claude.com/en/docs/claude-code/setup) |
 | a **Claude subscription** (Pro / Max) *or* an **Anthropic API key** | pays for the agent | sign in with `claude` → `/login`, or [console.anthropic.com](https://console.anthropic.com/settings/keys) |
-| **Blender** 4.2 or newer | where the model is built | [blender.org](https://www.blender.org/download/) |
+| **Blender** 4.2 or newer — for the script route | where the agent builds the model (runs headless) | [blender.org](https://www.blender.org/download/) |
 | **Python 3** | the agent's helper tools | preinstalled on macOS (`xcode-select --install` if missing) |
 | a **fal.ai key** — optional | only for the Generator route | [fal.ai/dashboard/keys](https://fal.ai/dashboard/keys) |
 
-No Blender add-on is needed: 3DModelist starts Blender with its own small
-server script. If you already use the official Blender Lab MCP add-on, that
-works too — the protocol is the same.
+No Blender add-on is needed, and you never have to open Blender yourself:
+3DModelist starts it headless with its own small server script when the agent
+needs it. If you already use the official Blender Lab MCP add-on, that works
+too — the protocol is the same.
 
 ## Download
 
@@ -65,21 +66,23 @@ signed, so macOS asks for confirmation on first launch: right-click the app →
 
 ## First launch
 
-Settings open on their own until everything is in place:
+A welcome window walks you through setup, one step at a time:
 
 1. **Workspace** — a folder for references, scene scripts, models and renders.
    *Prepare folder* lays out the pipeline kit the agent works with (see below).
-   You can point it at a folder you already use: missing files are added,
-   nothing is overwritten.
-2. **Claude** — *By subscription* uses the login of your `claude` CLI;
-   *By API key* bills your Anthropic account per token, and each task shows
-   what it cost. *Save and check* runs a one-word test.
-3. **fal.ai** — only if you want generators. *Save and check* verifies the key
-   without spending anything.
-4. **Blender** — the path is found automatically on macOS. *Start Blender*
-   opens it with the 3DModelist server; *Headless* runs it without a window.
+   You can pick a folder you already use: missing files are added, nothing is
+   overwritten.
+2. **Claude** — *By subscription* uses the login of your `claude` CLI (the app
+   can open Terminal with `claude` for you to `/login`); *By API key* bills your
+   Anthropic account per token, and each task shows what it cost.
+3. **Blender** — optional. It is where the agent builds models by script. You
+   never need its window: 3DModelist starts Blender headless when the agent
+   begins work and shuts it down when you quit. Skip it if you only use
+   generators — they return a finished model file.
+4. **Generators** — optional fal.ai key, checked without spending anything.
 
-Keys stay on your machine, in `~/Library/Application Support/3DModelist/settings.json`
+Everything can be changed later in **Settings** (bottom left). Keys stay on
+your machine, in `~/Library/Application Support/3DModelist/settings.json`
 (readable only by you). The page never receives them back — only "set, …abcd".
 
 ## Run from source

@@ -52,6 +52,10 @@ export async function ping() {
   return v;
 }
 
+// Blender, которого студия подняла сама без окна: его и гасим при выходе.
+// Blender с окном — человека, его не трогаем.
+let ours = null;
+
 // Запустить Blender с сервером 3DModelist. background — без окна.
 export async function launch({ background = false } = {}) {
   const s = load();
@@ -67,6 +71,10 @@ export async function launch({ background = false } = {}) {
     stdio: 'ignore',
   });
   p.unref();
+  if (background) {
+    ours = p;
+    p.on('exit', () => { if (ours === p) ours = null; });
+  }
   cache = { t: 0, v: null };
   // Blender поднимается 3–10 с; ждём сервер, но не дольше 25 с.
   for (let i = 0; i < 50; i++) {
@@ -75,4 +83,37 @@ export async function launch({ background = false } = {}) {
     if ((await ping()).online) return { started: true };
   }
   return { started: false, error: 'Blender запущен, но сервер не ответил за 25 с' };
+}
+
+// Перед ходом агента: Blender на связи? Нет — поднять без окна. Человеку
+// окно Blender не нужно: модель он смотрит в студии.
+export async function ensure() {
+  cache = { t: 0, v: null };
+  if ((await ping()).online) return { online: true };
+  if (!exists(load().blender.bin)) return { online: false, error: 'Blender не найден — агенту не в чем строить (Настройки ▸ Blender)' };
+  const r = await launch({ background: true });
+  return r.started || r.already ? { online: true, started: !!r.started } : { online: false, error: r.error };
+}
+
+export function stopOurs() {
+  if (ours) { try { process.kill(ours.pid, 'SIGTERM'); } catch { /* уже вышел */ } ours = null; }
+}
+
+// Версия без запуска сервера: «есть ли вообще Blender по этому пути».
+export function version(bin = load().blender.bin) {
+  return new Promise((resolve) => {
+    if (!exists(bin)) { resolve({ ok: false, error: 'по этому пути Blender нет' }); return; }
+    let out = '';
+    const p = spawn(bin, ['--version'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const timer = setTimeout(() => p.kill('SIGKILL'), 20000);
+    p.stdout.on('data', (c) => { out += c; });
+    p.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: e.message }); });
+    p.on('close', () => {
+      clearTimeout(timer);
+      const m = /Blender\s+([\d.]+(?:\s+LTS)?)/.exec(out);
+      if (!m) { resolve({ ok: false, error: 'это не Blender или он не запустился' }); return; }
+      const [maj, min] = m[1].split('.').map(Number);
+      resolve({ ok: maj > 4 || (maj === 4 && min >= 2), version: m[1], old: !(maj > 4 || (maj === 4 && min >= 2)) });
+    });
+  });
 }

@@ -167,19 +167,24 @@ export async function openSettings(focus) {
     // ── Blender ──
     const b = draft.blender;
     const secBl = el('section', { class: 'set', id: 'set-blender' },
-      el('h3', {}, 'Blender'),
-      el('p', { class: 'muted' }, 'Агент строит модель в Blender (4.2 и новее). Студия запускает его со своим сервером — ставить аддоны не нужно. ',
-        link('https://www.blender.org/download/', 'Скачать Blender'), '.'),
-      el('div', { class: 'field' }, el('div', { class: 'label' }, 'Программа Blender'),
+      el('h3', {}, 'Blender — мастерская агента'),
+      el('p', { class: 'muted' }, 'Путь «Агент скриптом» строит модель в Blender. Студия сама запускает его без окна, когда агент берётся за работу, и выключает при выходе. Для генераторов Blender не обязателен. Нужен 4.2 и новее — ',
+        link('https://www.blender.org/download/', 'скачать'), '.'),
+      el('div', { class: 'field' }, el('div', { class: 'label' }, 'Где установлен Blender'),
         el('input', { class: 'input', value: b.bin, placeholder: '/Applications/Blender.app/Contents/MacOS/Blender', oninput: (e) => { b.bin = e.target.value; } })),
-      el('div', { class: 'field' }, el('div', { class: 'label' }, 'Порт', el('span', { class: 'hint' }, 'обычно 9876')),
-        el('input', { class: 'input', style: 'max-width:120px', value: b.port, inputmode: 'numeric', oninput: (e) => { b.port = e.target.value; } })),
-      hs.blender.online ? line(true, `на связи: Blender ${hs.blender.version || ''}${hs.blender.background ? ' (без окна)' : ''}`)
-        : hs.blender.bin ? line(null, 'не запущен') : line(false, 'Blender не найден — укажи путь'),
+      hs.blender.online ? line(true, `работает: Blender ${hs.blender.version || ''}${hs.blender.background ? ' (без окна)' : ''}`)
+        : hs.blender.bin ? line(null, 'найден — запустится сам, когда понадобится') : line(false, 'Blender не найден — укажи путь или поставь Blender'),
       hs.python ? null : line(false, 'нет python3 — нужен для инструментов агента (xcode-select --install)'),
       el('div', { class: 'row' },
-        el('button', { class: 'btn', disabled: hs.blender.online, onclick: act(async () => { await save(true); const r = await api('/blender/launch', { method: 'POST', body: {} }); await refreshHealth(); if (r.error) toast(r.error, true); }) }, 'Запустить Blender'),
-        el('button', { class: 'btn ghost', disabled: hs.blender.online, onclick: act(async () => { await save(true); const r = await api('/blender/launch', { method: 'POST', body: { background: true } }); await refreshHealth(); if (r.error) toast(r.error, true); }) }, 'Без окна')));
+        el('button', {
+          class: 'btn', disabled: hs.blender.online, title: 'Если хочешь смотреть, как агент строит, прямо в Blender',
+          onclick: act(async () => { await save(true); const r = await api('/blender/launch', { method: 'POST', body: {} }); await refreshHealth(); if (r.error) toast(r.error, true); }),
+        }, 'Открыть Blender с окном')),
+      el('details', { class: 'more' },
+        el('summary', {}, 'Дополнительно'),
+        el('div', { class: 'field' }, el('div', { class: 'label' }, 'Порт связи с Blender', el('span', { class: 'hint' }, 'обычно 9876')),
+          el('input', { class: 'input', style: 'max-width:120px', value: b.port, inputmode: 'numeric', oninput: (e) => { b.port = e.target.value; } }),
+          el('p', { class: 'muted' }, 'Номер, по которому студия и агент разговаривают с Blender на этом компьютере. Менять, только если 9876 занят другой программой.'))));
 
     // ── язык ──
     const secLang = el('section', { class: 'set' },

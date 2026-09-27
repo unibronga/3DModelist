@@ -77,6 +77,8 @@ function createWindow() {
             значок: icon ? icon.complete && icon.naturalWidth > 0 : 'нет узла',
             панель: !!document.querySelector('#panel .panel-title'),
             мостик: typeof window.modelist?.pickFolder,
+            вход: typeof window.modelist?.claudeLogin,
+            приветствие: !!document.querySelector('.welcome'),
           }));
         }, 2500));
       `);
@@ -135,6 +137,21 @@ function buildMenu() {
   ]));
 }
 
+// Вход в Claude по подписке делается в самой программе claude (/login).
+// Открываем Терминал сразу с ней — человеку остаётся нажать Enter и войти.
+ipcMain.handle('claude-login', async () => {
+  const { load } = await import(pathToFileURL(path.join(__dirname, '..', 'server', 'settings.mjs')).href);
+  const c = load().claude;
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;          // одинарные кавычки для shell
+  const cmd = (c.configDir ? `CLAUDE_CONFIG_DIR=${q(c.configDir)} ` : '') + q(c.bin || 'claude');
+  const osa = (v) => v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');       // кавычки для AppleScript
+  require('node:child_process').execFile('osascript', [
+    '-e', `tell application "Terminal" to do script "${osa(cmd)}"`,
+    '-e', 'tell application "Terminal" to activate',
+  ]);
+  return true;
+});
+
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, {
     title: 'Рабочая папка 3DModelist',
@@ -158,8 +175,8 @@ app.whenReady().then(async () => {
   });
 });
 
-// Агент — отдельный процесс: закрыли приложение — ход агента останавливаем.
-app.on('before-quit', () => { try { server?.stopAll(); } catch { /* нечего */ } });
+// Агент и фоновый Blender — отдельные процессы: закрыли приложение — гасим и их.
+app.on('before-quit', () => { try { server?.shutdown(); } catch { /* нечего */ } });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });

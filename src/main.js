@@ -5,6 +5,7 @@ import { Viewer } from './viewer.js';
 
 import { $, el, esc, fileUrl, base, money, api, toast, segment } from './ui.js';
 import { openSettings, refreshHealth, blockers, setOnChange, H } from './settings.js';
+import { openWelcome } from './welcome.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -187,9 +188,15 @@ async function renderBlender() {
   const b = $('#blender');
   try {
     const v = await api('/blender');
-    b.className = 'blender ' + (v.online ? 'on' : 'off');
-    b.querySelector('.txt').textContent = v.online ? `Blender · ${v.file || 'без файла'}` : 'Blender закрыт — запустить';
-    b.title = v.online ? `Blender ${v.version || ''}\n${v.file || ''}` : 'Агенту нужен запущенный Blender: открыть настройки Blender';
+    const found = H.health?.blender?.bin !== false;
+    // Закрытый Blender — не беда: студия поднимет его сама, когда агент возьмётся за работу.
+    b.className = 'blender ' + (v.online ? 'on' : found ? 'idle' : 'off');
+    b.querySelector('.txt').textContent = v.online
+      ? `Blender · ${v.file || (v.background ? 'без окна' : 'без файла')}`
+      : found ? 'Blender запустится сам' : 'Blender не найден';
+    b.title = v.online ? `Blender ${v.version || ''}${v.background ? ' — без окна, запущен студией' : ''}\n${v.file || ''}`
+      : found ? 'Студия запускает Blender без окна, когда агент начинает работу. Нажми, чтобы открыть его с окном.'
+        : 'Для пути «Агент скриптом» нужен Blender — открыть настройки';
   } catch { /* сервер перезапускается */ }
 }
 
@@ -299,6 +306,8 @@ function renderNewForm() {
   const hasRef = d.uploads.length + d.refPaths.length > 0;
 
   const todo = blockers();
+  const noBlender = !isGen && !H.health?.blender?.bin;
+  if (noBlender) todo.push('для пути «Агент скриптом» нужен Blender');
   const start = el('button', {
     class: 'btn big wide ' + (isGen ? 'accent' : 'primary'),
     disabled: !hasRef || !d.name.trim() || todo.length > 0,
@@ -666,8 +675,17 @@ async function boot() {
   const running = S.tasks.find((t) => t.agent_state === 'running');
   if (running) await selectTask(running.id);
   else renderPanel();
-  // Первый запуск: чего-то не хватает — сразу показать настройки.
-  if (blockers().length) openSettings();
+  // Первый запуск — окно приветствия с настройкой по шагам; потом, если
+  // что-то отвалилось (удалили Blender, вышли из Claude), — сразу настройки.
+  const settings = await api('/settings');
+  const refresh = async () => {
+    await refreshHealth().catch(() => {});
+    renderHealth();
+    await Promise.all([refreshTasks(), refreshLibrary(), renderBlender()]).catch(() => {});
+    if (!S.sel) renderPanel();
+  };
+  if (!settings.onboarded) openWelcome({ onDone: refresh });
+  else if (blockers().length) openSettings();
   // Ссылка вида #model=out/<папка>/<файл>.glb открывает модель сразу.
   const deep = new URLSearchParams(location.hash.slice(1)).get('model');
   if (deep) showModel(deep, { manual: true });

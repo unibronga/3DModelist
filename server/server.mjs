@@ -142,13 +142,15 @@ function taskView(t) {
   const st = pipeStatus();
   return {
     ...t,
-    running: busyTask() === t.id,
+    running: busyTask() === t.id || starting === t.id,
     pipe: st && st.task === t.name ? st : null,
     media: taskMedia(t),
   };
 }
 
 // ── маршруты ────────────────────────────────────────────────────────────────
+let starting = null;          // задача, для которой прямо сейчас поднимается Blender
+
 async function api(req, res, url) {
   const parts = url.pathname.split('/').filter(Boolean);   // ['api', ...]
   const m = req.method;
@@ -186,6 +188,10 @@ async function api(req, res, url) {
   }
   if (parts[1] === 'blender') {
     if (!parts[2] && m === 'GET') return send(res, 200, ws() ? await blender.ping() : { online: false });
+    if (parts[2] === 'version' && m === 'POST') {
+      const b = await readBody(req);
+      return send(res, 200, await blender.version(typeof b.bin === 'string' && b.bin ? b.bin : undefined));
+    }
     if (parts[2] === 'launch' && m === 'POST') {
       const b = await readBody(req);
       try { return send(res, 200, await blender.launch({ background: !!b.background })); } catch (e) { return send(res, 400, { error: e.message }); }
@@ -205,7 +211,7 @@ async function api(req, res, url) {
     if (!id && m === 'GET') {
       return send(res, 200, listTasks().map((t) => ({
         id: t.id, name: t.name, slug: t.slug, route: t.route, state: t.state,
-        agent_state: busyTask() === t.id ? 'running' : t.agent_state,
+        agent_state: busyTask() === t.id || starting === t.id ? 'running' : t.agent_state,
         created_at: t.created_at, spent_usd: t.spent_usd || 0, gen_state: t.gen?.state || null,
       })));
     }
@@ -245,9 +251,26 @@ async function api(req, res, url) {
         if (!text) return send(res, 400, { error: 'пустое сообщение' });
         prompt = text;
       }
-      try { runTurn(id, prompt); } catch (e) { return send(res, 409, { error: e.message }); }
+      if (busyTask() || starting) return send(res, 409, { error: 'агент уже занят другой задачей — Blender у нас один' });
       if (text) addEvent(id, { kind: 'user', text });
       else addEvent(id, { kind: 'system', text: 'Агент запущен.' });
+      // Blender поднимаем сами и без окна — это может занять до ~10 с,
+      // поэтому отвечаем сразу, а ход агента стартует следом.
+      starting = id;
+      patchTask(id, (t) => { t.agent_state = 'running'; });
+      (async () => {
+        try {
+          const bl = await blender.ensure();
+          if (bl.started) addEvent(id, { kind: 'system', text: 'Blender запущен без окна.' });
+          if (!bl.online) addEvent(id, { kind: 'error', text: bl.error || 'Blender не запустился' });
+          runTurn(id, prompt);
+        } catch (e) {
+          addEvent(id, { kind: 'error', text: e.message });
+          patchTask(id, (t) => { t.agent_state = 'waiting'; });
+        } finally {
+          starting = null;
+        }
+      })();
       return send(res, 200, { ok: true });
     }
     if (sub === 'stop' && m === 'POST') return send(res, 200, { ok: stopTurn(id) });
@@ -312,7 +335,11 @@ export function start({ port = Number(process.env.MODELIST_PORT || 8770), fallba
   });
 }
 
-export { stopAll };
+// Выход: остановить ход агента и Blender, которого студия поднимала без окна.
+export function shutdown() {
+  stopAll();
+  blender.stopOurs();
+}
 
 // Запуск напрямую: node server/server.mjs
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
@@ -322,7 +349,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     console.error('3DModelist не поднялся:', e.message);
     process.exit(1);
   });
-  const bye = () => { stopAll(); process.exit(0); };
+  const bye = () => { shutdown(); process.exit(0); };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);
 }

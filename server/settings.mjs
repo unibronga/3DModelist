@@ -58,6 +58,7 @@ function defaults() {
   return {
     workspace: '',                       // пусто — ещё не выбрана
     language: 'ru',                      // язык ответов агента
+    onboarded: false,                    // первый запуск пройден (окно приветствия больше не показывать)
     claude: {
       mode: 'subscription',              // subscription | api
       bin: which('claude') || '',
@@ -111,6 +112,7 @@ export function publicView() {
   return {
     workspace: s.workspace,
     language: s.language,
+    onboarded: !!s.onboarded,
     claude: { mode: s.claude.mode, bin: s.claude.bin, configDir: s.claude.configDir, apiKey: mask(s.claude.apiKey) },
     fal: { key: mask(s.fal.key) },
     blender: { bin: s.blender.bin, port: s.blender.port },
@@ -124,6 +126,7 @@ export function update(p = {}) {
   const s = structuredClone(load());
   if (typeof p.workspace === 'string') s.workspace = p.workspace.trim().replace(/^~(?=$|\/)/, os.homedir());
   if (p.language === 'ru' || p.language === 'en') s.language = p.language;
+  if (typeof p.onboarded === 'boolean') s.onboarded = p.onboarded;
   if (p.claude) {
     const c = p.claude;
     if (c.mode === 'subscription' || c.mode === 'api') s.claude.mode = c.mode;

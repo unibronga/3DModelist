@@ -335,13 +335,19 @@ async function downloadAs(fmt) {
 }
 
 // Строка под моделью задачи — как нижняя панель Tripo: скачать, папка, готово.
+// Перерисовка — только когда поменялось содержимое: опрос задачи идёт каждые
+// 1,5 с, и полная перерисовка закрывала открытое меню «Скачать» (владелец 27.09).
+let modelBarKey = '';
 function renderModelBar() {
   const bar = $('#model-bar');
   const tk = S.task;
   const src = modelSource();
   bar.hidden = !tk || !S.shown || !src;
-  if (bar.hidden) return;
+  if (bar.hidden) { modelBarKey = ''; return; }
   const done = tk.state === 'done';
+  const key = JSON.stringify([tk.id, done, !!tk.running, src, getLang()]);
+  if (key === modelBarKey) return;
+  modelBarKey = key;
   const dlBtn = el('button', { class: 'btn', onclick: (e) => {
     document.querySelector('.dl-pop')?.remove();
     const pop = el('div', { class: 'dl-pop' }, ...['glb', 'fbx', 'obj'].map((f) => el('button', {

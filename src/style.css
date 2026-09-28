@@ -1170,3 +1170,20 @@ kbd {
 .pack-head .pack-name { flex: 1; }
 .pack-head .link-btn { white-space: nowrap; padding: 2px 4px; }
 .anim-pack .clip-item { margin-left: 20px; width: calc(100% - 20px); }
+
+/* ── подсказки: своя карточка вместо системной (как в 3DPainter) ───────── */
+.tip-card {
+  position: fixed; z-index: 1000; max-width: 280px; padding: 8px 10px 9px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.08);
+  font-size: 12px; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 0.12s ease;
+}
+.tip-card.on { opacity: 1; visibility: visible; }
+.tip-head { display: flex; align-items: center; gap: 8px; }
+.tip-title { font-weight: 600; color: var(--text); }
+.tip-head kbd {
+  margin-left: auto; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--panel-2); color: var(--text-2);
+  font: 600 10.5px/16px -apple-system, "SF Pro Text", system-ui, sans-serif; white-space: nowrap;
+}
+.tip-text { margin-top: 4px; color: var(--text-2); line-height: 1.45; }

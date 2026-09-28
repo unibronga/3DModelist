@@ -56,6 +56,8 @@ reference from four angles, and export to `.blend` + GLB.
   model is built (agent or generator, which models) folds into one line above
   the chat; the spec, the agent's frames and **Delete task** are in the task's
   ⋯ menu (deleted tasks go to the Trash; finished files stay).
+- **Tooltips on every button** — a card as in 3DPainter: name, shortcut and
+  what the button does.
 - **Orientation cube** in the top-right corner of the view (as in 3DPainter,
   axes as in Blender): click a face, edge, corner or axis to snap the view,
   drag to orbit.

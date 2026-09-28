@@ -72,7 +72,7 @@ export async function openWelcome({ onDone } = {}) {
         el('p', {}, t('wz.ws.text')),
         el('div', { class: 'row' },
           el('input', { class: 'input', value: st.ws, oninput: (e) => { st.ws = e.target.value; st.done.ws = false; } }),
-          host && el('button', { class: 'btn', onclick: () => run(async () => { const p = await host.pickFolder(); if (p) { st.ws = p; st.done.ws = false; } }) }, t('common.choose'))),
+          host && el('button', { class: 'btn', title: t('tip.chooseFolder'), onclick: () => run(async () => { const p = await host.pickFolder(); if (p) { st.ws = p; st.done.ws = false; } }) }, t('common.choose'))),
         ready ? status('ok', t('ws.ready', { n: w.skills })) : null,
       ],
       primary: ready
@@ -107,7 +107,7 @@ export async function openWelcome({ onDone } = {}) {
     }
     if (c.mode === 'subscription') {
       body.push(el('p', { class: 'muted' }, t('claude.loginText')),
-        host && found && el('button', { class: 'btn', onclick: () => host.claudeLogin() }, t('claude.loginBtn')));
+        host && found && el('button', { class: 'btn', title: t('tip.claudeLogin'), onclick: () => host.claudeLogin() }, t('claude.loginBtn')));
     } else {
       body.push(el('div', { class: 'field' },
         el('div', { class: 'label' }, t('claude.apiKey'), el('span', { class: 'hint' }, s.claude.apiKey.set ? t('key.set', { tail: s.claude.apiKey.tail }) : link('https://console.anthropic.com/settings/keys', t('key.get')))),
@@ -229,12 +229,12 @@ export async function openWelcome({ onDone } = {}) {
           langSelect(async (code) => { setLang(code); await api('/settings', { method: 'PATCH', body: { ui: { lang: code } } }); draw(); }))),
       el('div', { class: 'steps' }, ...STEPS.map((x, i) => el('button', {
         class: 'step' + (i === st.step ? ' on' : '') + (st.done[x.key] ? ' done' : '') + (st.skipped[x.key] && !st.done[x.key] ? ' skip' : ''),
-        disabled: locked(i) || st.busy,
+        disabled: locked(i) || st.busy, title: t('tip.step', { name: t(x.title) }),
         onclick: () => go(i),
       }, el('span', { class: 'step-n' }, st.done[x.key] ? '✓' : i + 1), t(x.title), x.optional && el('span', { class: 'step-opt' }, t('wz.optional'))))),
       el('div', { class: 'welcome-body' }, el('h2', {}, view.title), ...view.body),
       el('div', { class: 'welcome-foot' },
-        st.step > 0 && st.step < 4 ? el('button', { class: 'btn ghost', disabled: st.busy, onclick: () => go(st.step - 1) }, '← ' + t('common.back')) : el('span'),
+        st.step > 0 && st.step < 4 ? el('button', { class: 'btn ghost', disabled: st.busy, title: t('tip.back'), onclick: () => go(st.step - 1) }, '← ' + t('common.back')) : el('span'),
         el('div', { class: 'row' },
           view.secondary ? el('button', { class: 'btn ghost', disabled: st.busy, onclick: view.secondary.onclick }, view.secondary.text) : null,
           el('button', { class: 'btn primary', disabled: st.busy, onclick: view.primary.onclick }, st.busy ? t('common.wait') : view.primary.text)))));

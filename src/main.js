@@ -13,6 +13,7 @@ import { openHelp, openAbout, REPO } from './help.js';
 import { Pins } from './pins.js';
 import { Animator } from './anim.js';
 import { ViewCube } from './viewcube.js';
+import { initTooltips } from './tooltip.js';
 import { Tools } from './tools.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
@@ -155,6 +156,9 @@ const animator = new Animator(viewer, $('#viewport').parentElement, {
   },
   onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); },
 });
+// Подсказки у всех кнопок — своя карточка, как в 3DPainter (src/tooltip.js).
+initTooltips();
+
 // Куб ориентации в правом верхнем углу окна — как в 3DPainter, оси как в Blender.
 const viewCube = new ViewCube($('#viewport'), {
   onPick: (dir) => viewer.setViewDirection(dir),
@@ -189,12 +193,12 @@ function renderPinsList() {
   box.replaceChildren(
     el('div', { class: 'row between' },
       el('span', { class: 'muted' }, t('pins.title')),
-      el('button', { class: 'link-btn', onclick: () => pins.clear() }, t('pins.clear'))),
+      el('button', { class: 'link-btn', title: t('tip.pinsClear'), onclick: () => pins.clear() }, t('pins.clear'))),
     ...pins.list.map((p, i) => el('div', { class: 'pin-chip' + (pins.editing === p ? ' on' : ''), onclick: (e) => { if (!e.target.closest('button')) pins.open(p); } },
       el('span', { class: 'pin-n' }, String(i + 1)),
       el('span', { class: 'pc-part' }, p.part || t('pin.noPart')),
       el('span', { class: 'pc-note' + (p.note.trim() ? '' : ' dim') }, p.note.trim() || t('pins.noNote')),
-      el('button', { class: 'pc-x', title: t('pin.remove'), onclick: () => pins.remove(p) }, '✕'))));
+      el('button', { class: 'pc-x', title: t('tip.pinRemove'), onclick: () => pins.remove(p) }, '✕'))));
 }
 
 async function showModel(rel, { manual = false, version = null } = {}) {
@@ -293,14 +297,14 @@ function renderTasks() {
   const box = $('#tasks');
   box.replaceChildren(...(S.tasks.length ? S.tasks.map((tk) => el('div', { class: 'item-wrap' },
     el('button', {
-      class: 'item' + (S.sel === tk.id ? ' sel' : ''),
+      class: 'item' + (S.sel === tk.id ? ' sel' : ''), title: t('tip.task'),
       onclick: () => selectTask(tk.id),
     },
     el('div', { class: 'body' },
       el('div', { class: 't' }, tk.name),
       el('div', { class: 's' }, routeName(tk.route) + (tk.spent_usd ? ' · ' + money(tk.spent_usd) : ''))),
     taskBadge(tk)),
-    el('button', { class: 'item-del', title: t('task.delete'), onclick: () => deleteTask(tk) }, trashIcon())))
+    el('button', { class: 'item-del', title: t('tip.taskDelete'), onclick: () => deleteTask(tk) }, trashIcon())))
     : [el('div', { class: 'none' }, t('side.noTasks'))]));
 }
 
@@ -310,7 +314,7 @@ const trashIcon = () => el('span', { html: '<svg viewBox="0 0 24 24" width="15" 
 // агенты не нужны; «Вернуть в работу» — в строке под моделью (владелец 27.09).
 function renderDonePanel() {
   const tk = S.task;
-  const menuBtn = el('button', { class: 'icon-btn', title: t('task.menu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
+  const menuBtn = el('button', { class: 'icon-btn', title: t('tip.taskMenu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
     el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>' }));
   $('#panel').replaceChildren(
     el('div', { class: 'panel-head' },
@@ -334,7 +338,7 @@ function refsField(refs) {
 }
 
 function dlField() {
-  const dl = (fmt) => el('button', { class: 'btn dl-btn', onclick: () => downloadAs(fmt) },
+  const dl = (fmt) => el('button', { class: 'btn dl-btn', title: t('tip.dl.' + fmt), onclick: () => downloadAs(fmt) },
     el('span', { class: 'dl-fmt' }, fmt.toUpperCase()), el('span', { class: 'dl-hint' }, t('dl.' + fmt + '.hint')));
   return el('div', { class: 'field' },
     el('div', { class: 'label' }, t('dl.title')),
@@ -351,7 +355,7 @@ function renderLibPanel() {
   const src = libTask();
   libPanelKey = libKey();
   // Вкладки «Модель | Анимации» — в шапке, рядом с именем (владелец 28.09).
-  const tab = (id, label) => el('button', { class: S.libTab === id ? 'on' : '', onclick: () => setLibTab(id) }, label);
+  const tab = (id, label) => el('button', { class: S.libTab === id ? 'on' : '', title: t('tip.tab.' + id), onclick: () => setLibTab(id) }, label);
   const head = el('div', { class: 'panel-head' },
     el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, m.name),
       el('div', { class: 'seg lib-tabs' }, tab('model', t('lib.tab.model')), tab('anim', t('lib.tab.anim')))),
@@ -366,7 +370,7 @@ function renderLibPanel() {
     el('div', { class: 'panel-scroll' },
       !!src && el('div', { class: 'field' },
         el('div', { class: 'label' }, t('lib.task')),
-        el('button', { class: 'btn lib-task', onclick: () => selectTask(src.id) }, src.name + ' →')),
+        el('button', { class: 'btn lib-task', title: t('tip.libTask'), onclick: () => selectTask(src.id) }, src.name + ' →')),
       refsField(src?.refs || []),
       dlField(),
       el('div', { class: 'muted done-hint' }, t('lib.hint', { path: `out/${m.name}` }))));
@@ -437,10 +441,10 @@ function renderModelBar() {
   const key = JSON.stringify([tk?.id, S.libSel, done, !!tk?.running, src, getLang()]);
   if (key === modelBarKey) return;
   modelBarKey = key;
-  const dlBtn = el('button', { class: 'btn', onclick: (e) => {
+  const dlBtn = el('button', { class: 'btn', title: t('tip.download'), onclick: (e) => {
     document.querySelector('.dl-pop')?.remove();
     const pop = el('div', { class: 'dl-pop' }, ...['glb', 'fbx', 'obj'].map((f) => el('button', {
-      class: 'menu-item', onclick: () => { pop.remove(); downloadAs(f); },
+      class: 'menu-item', title: t('tip.dl.' + f), onclick: () => { pop.remove(); downloadAs(f); },
     }, el('span', {}), el('span', {}, f.toUpperCase() + ' — ' + t('dl.' + f + '.hint')), el('span', {}))));
     e.currentTarget.parentElement.append(pop);
     const off = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('pointerdown', off, true); } };
@@ -448,10 +452,10 @@ function renderModelBar() {
   } }, '↓ ' + t('bar.download'));
   bar.replaceChildren(...[
     el('div', { class: 'bar-dl' }, dlBtn),
-    host?.openPath && el('button', { class: 'btn', onclick: () => reveal(src.slice(0, src.lastIndexOf('/'))) }, t('bar.folder')),
+    host?.openPath && el('button', { class: 'btn', title: t('tip.folder'), onclick: () => reveal(src.slice(0, src.lastIndexOf('/'))) }, t('bar.folder')),
     tk && (done
-      ? el('button', { class: 'btn', onclick: () => patch({ state: 'open' }) }, '↩ ' + t('task.reopen'))
-      : el('button', { class: 'btn primary', disabled: !!tk.running, title: t('task.done.hint'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('bar.done'))),
+      ? el('button', { class: 'btn', title: t('tip.reopen'), onclick: () => patch({ state: 'open' }) }, '↩ ' + t('task.reopen'))
+      : el('button', { class: 'btn primary', disabled: !!tk.running, title: t('tip.done'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('bar.done'))),
   ].filter(Boolean));
 }
 
@@ -505,14 +509,14 @@ function renderLibrary() {
     return el('div', { class: 'item-wrap' },
       el('button', {
         class: 'item' + (S.libSel === m.name ? ' sel' : ''),
-        title: m.files.map((f) => f.path).join('\n'),
+        title: t('tip.libItem', { files: m.files.map((f) => f.path).join(', ') }),
         onclick: () => selectLibrary(m.name),
       },
       el('div', { class: 'thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '' }),
       el('div', { class: 'body' },
         el('div', { class: 't' }, m.name),
         el('div', { class: 's' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')))),
-      el('button', { class: 'item-del', title: t('lib.trash'), onclick: () => trashLibraryModel(m) }, trashIcon()));
+      el('button', { class: 'item-del', title: t('tip.libTrash'), onclick: () => trashLibraryModel(m) }, trashIcon()));
   }) : [el('div', { class: 'none' }, t('side.noModels'))]));
 }
 
@@ -644,6 +648,7 @@ function genBlock(g, onChange) {
     el('div', { class: 'label' }, t('gen.title'), el('span', { class: 'hint' }, t('gen.paid'))),
     el('div', { class: 'gens' }, ...S.meta.generators.map((x) => el('button', {
       class: 'gen' + (x.id === g.model ? ' on' : ''),
+      title: t('tip.gen', { name: x.label, tag: genTag(x), price: money(g.texture ? x.priceTex : x.price) }),
       onclick: () => onChange({ model: x.id, detail: null }),
     },
     el('div', {}, el('div', { class: 'gl' }, x.label), el('div', { class: 'gt' }, genTag(x))),
@@ -672,7 +677,7 @@ function sourcePicker({ items, selected, onPick, sheetInfo, onSplit, splitting }
     n >= 2 && el('div', { class: 'notice' },
       el('div', {}, t('gen.sheet', { n })),
       !onSplit && el('div', {}, t('gen.sheet.pickView')),
-      onSplit && el('button', { class: 'btn primary', disabled: splitting, onclick: onSplit }, splitting ? t('common.wait') : t('gen.sheet.split'))));
+      onSplit && el('button', { class: 'btn primary', disabled: splitting, title: t('tip.split'), onclick: onSplit }, splitting ? t('common.wait') : t('gen.sheet.split'))));
 }
 
 async function loadRefsTree() {
@@ -685,9 +690,9 @@ function renderNewForm() {
   const panel = $('#panel');
   const refThumbs = [
     ...d.uploads.map((u, i) => el('div', { class: 'ref', style: `background-image:url("${u.data}")`, title: u.name },
-      el('button', { title: t('form.remove'), onclick: (e) => { e.stopPropagation(); d.uploads.splice(i, 1); renderPanel(); } }, '×'))),
+      el('button', { title: t('tip.removeRef'), onclick: (e) => { e.stopPropagation(); d.uploads.splice(i, 1); renderPanel(); } }, '×'))),
     ...d.refPaths.map((p, i) => el('div', { class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(d.refPaths, i) },
-      el('button', { title: t('form.remove'), onclick: (e) => { e.stopPropagation(); d.refPaths.splice(i, 1); renderPanel(); } }, '×'))),
+      el('button', { title: t('tip.removeRef'), onclick: (e) => { e.stopPropagation(); d.refPaths.splice(i, 1); renderPanel(); } }, '×'))),
   ];
 
   const input = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', multiple: true, hidden: true, onchange: (e) => readFiles(e.target.files) });
@@ -719,6 +724,7 @@ function renderNewForm() {
   if (!isGen && H.health?.blender?.bin === false) todo.push(t('block.blenderForScript'));
   const start = el('button', {
     class: 'btn big wide ' + (isGen ? 'accent' : 'primary'),
+    title: t(isGen ? 'tip.startGen' : 'tip.startScript'),
     disabled: !hasRef || !d.name.trim() || todo.length > 0,
     onclick: () => createAndStart(start),
   }, isGen ? t('form.generate', { price: money(price) }) : t('form.start'));
@@ -731,7 +737,7 @@ function renderNewForm() {
       todo.length > 0 && el('div', { class: 'notice' },
         el('b', {}, t('form.setupFirst')),
         el('div', {}, todo.join(' · ')),
-        el('button', { class: 'btn primary', onclick: () => openSettings() }, t('form.openSettings'))),
+        el('button', { class: 'btn primary', title: t('tip.openSettings'), onclick: () => openSettings() }, t('form.openSettings'))),
       el('div', { class: 'field' },
         el('div', { class: 'label' }, t('form.ref'), el('span', { class: 'req' }, t('form.required'))),
         drop, input, el('div', { class: 'refs' }, ...refThumbs), pick),
@@ -901,8 +907,8 @@ function renderProcess() {
       ? t('proc.agent.stalled', { time: clock(quiet) })
       : t('proc.agent.quiet', { time: clock(quiet) })),
     stalled && el('div', { class: 'row' },
-      el('button', { class: 'btn primary', onclick: restartTurn }, t('proc.agent.restart')),
-      el('button', { class: 'btn ghost', onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(() => refreshTask()) }, t('chat.stop'))));
+      el('button', { class: 'btn primary', title: t('tip.restartTurn'), onclick: restartTurn }, t('proc.agent.restart')),
+      el('button', { class: 'btn ghost', title: t('tip.stop'), onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(() => refreshTask()) }, t('chat.stop'))));
 }
 
 // «Перезапустить»: остановить ход и, как только он погас, отправить «Продолжай».
@@ -939,7 +945,7 @@ function renderTaskPanel() {
           : tk.route === 'generator' && tk.gen?.state === 'done' ? ['wait', t('status.genDone')] : ['', t('status.new')];
   const sub = [routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })];
   if (tk.limit5h != null) sub.push(t('task.limit', { p: Math.round(tk.limit5h * 100) }));
-  const menuBtn = el('button', { class: 'icon-btn', title: t('task.menu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
+  const menuBtn = el('button', { class: 'icon-btn', title: t('tip.taskMenu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
     el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>' }));
   const head = el('div', { class: 'panel-head' },
     el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, tk.name), menuBtn),
@@ -997,18 +1003,18 @@ function renderTaskPanel() {
     running
       ? el('div', { class: 'row between' },
         el('div', { class: 'typing' }, t('chat.working')),
-        el('button', { class: 'btn danger', onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(refreshTask) }, t('chat.stop')))
+        el('button', { class: 'btn danger', title: t('tip.stop'), onclick: () => api(`/tasks/${tk.id}/stop`, { method: 'POST' }).then(refreshTask) }, t('chat.stop')))
       : null,
     el('div', { class: 'pins-list', id: 'pins-list', hidden: true }),
     !running && started && el('div', { class: 'quick' },
-      el('button', { class: 'btn', onclick: () => send(t('quick.ok.msg')) }, t('quick.ok')),
-      el('button', { class: 'btn', onclick: () => send(t('quick.go.msg')) }, t('quick.go')),
+      el('button', { class: 'btn', title: t('tip.quickOk'), onclick: () => send(t('quick.ok.msg')) }, t('quick.ok')),
+      el('button', { class: 'btn', title: t('tip.quickGo'), onclick: () => send(t('quick.go.msg')) }, t('quick.go')),
       // Точечная правка — там же, где пишут правки: метка на модели + слова.
-      el('button', { class: 'btn pin-quick' + (pins.mode ? ' on' : ''), title: t('view.pin.hint'), onclick: () => togglePinMode() }, '📍 ' + t('quick.pin'))),
+      el('button', { class: 'btn pin-quick' + (pins.mode ? ' on' : ''), title: t('tip.view.pin'), onclick: () => togglePinMode() }, '📍 ' + t('quick.pin'))),
     !running && ta,
     !running && (started
-      ? el('button', { class: 'btn primary', onclick: () => send() }, t('chat.send'))
-      : el('button', { class: 'btn primary big', disabled: !genReady, onclick: () => send(ta.value.trim()) },
+      ? el('button', { class: 'btn primary', title: t('tip.send'), onclick: () => send() }, t('chat.send'))
+      : el('button', { class: 'btn primary big', disabled: !genReady, title: t('tip.startAgent'), onclick: () => send(ta.value.trim()) },
         tk.route === 'generator' ? t('chat.handOver') : t('chat.startAgent'))),
   );
 
@@ -1069,7 +1075,7 @@ function genCard(tk) {
       el('button', {
         class: 'btn accent wide', style: 'margin-top:10px',
         disabled: sheetN >= 2,                  // с листа генератор слепит несколько фигур
-        title: sheetN >= 2 ? t('gen.sheet.blocked', { n: sheetN }) : '',
+        title: sheetN >= 2 ? t('gen.sheet.blocked', { n: sheetN }) : t('tip.genRun'),
         onclick: async () => {
           const m = genMeta(d.model);
           if (!confirm(t('gen.confirm', { name: m.label, price: money(price) }))) return;
@@ -1294,14 +1300,14 @@ function openLibrary() {
       el('div', { class: 'lib-name' }, m.name),
       el('div', { class: 'muted' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')),
       el('div', { class: 'lib-actions' },
-        el('button', { class: 'btn primary', onclick: () => { selectLibrary(m.name); close(); } }, t('lib.open')),
-        host?.openPath && el('button', { class: 'btn ghost', onclick: () => reveal(`out/${m.name}`) }, t('lib.reveal')),
-        el('button', { class: 'btn ghost danger', onclick: () => trashLibraryModel(m, draw) }, t('lib.trash')))));
+        el('button', { class: 'btn primary', title: t('tip.libOpen'), onclick: () => { selectLibrary(m.name); close(); } }, t('lib.open')),
+        host?.openPath && el('button', { class: 'btn ghost', title: t('tip.libReveal'), onclick: () => reveal(`out/${m.name}`) }, t('lib.reveal')),
+        el('button', { class: 'btn ghost danger', title: t('tip.libTrash'), onclick: () => trashLibraryModel(m, draw) }, t('lib.trash')))));
     back.replaceChildren(el('div', { class: 'sheet wide' },
       el('div', { class: 'sheet-head' },
         el('div', {}, el('div', { class: 'panel-title' }, t('side.library')),
           el('div', { class: 'panel-sub' }, t('lib.sub', { path: root + '/out' }))),
-        el('button', { class: 'btn ghost', onclick: close }, t('common.close'))),
+        el('button', { class: 'btn ghost', title: t('tip.close'), onclick: close }, t('common.close'))),
       el('div', { class: 'sheet-body' }, cards.length ? el('div', { class: 'lib-grid' }, ...cards) : el('p', { class: 'muted' }, t('side.noModels')))));
   };
   draw();
@@ -1344,7 +1350,7 @@ function renderHealth() {
   const todo = blockers();
   const b = $('#open-settings');
   b.classList.toggle('warn', todo.length > 0);
-  b.title = todo.length ? t('settings.todo', { list: todo.join(', ') }) : t('settings.title');
+  b.title = todo.length ? t('settings.todo', { list: todo.join(', ') }) : t('tip.settings');
 }
 
 // Всё, что нарисовано словами: после смены языка — перерисовать.

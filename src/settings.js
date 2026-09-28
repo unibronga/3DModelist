@@ -132,7 +132,7 @@ export async function openSettings(focus) {
             onchange: async (e) => { await saveUi({ scale: Number(e.target.value) }); },
           }),
           scaleLabel,
-          el('button', { class: 'btn ghost', onclick: async () => { applyScale(1); await saveUi({ scale: 1 }); draw(); } }, '100%'))),
+          el('button', { class: 'btn ghost', title: t('tip.scale100'), onclick: async () => { applyScale(1); await saveUi({ scale: 1 }); draw(); } }, '100%'))),
       el('p', { class: 'muted' }, t('set.lang.agentHint')));
 
     // ── рабочая папка ──
@@ -145,10 +145,10 @@ export async function openSettings(focus) {
       el('h3', {}, t('ws.title')),
       el('p', { class: 'muted' }, t('ws.text')),
       el('div', { class: 'row' }, wsInput,
-        host && el('button', { class: 'btn', onclick: act(async () => { const p = await host.pickFolder(); if (p) draft.workspace = p; }) }, t('common.choose'))),
+        host && el('button', { class: 'btn', title: t('tip.chooseFolder'), onclick: act(async () => { const p = await host.pickFolder(); if (p) draft.workspace = p; }) }, t('common.choose'))),
       wsState,
       el('button', {
-        class: 'btn primary',
+        class: 'btn primary', title: t('tip.prepareWs'),
         onclick: act(async () => {
           await save(true);
           const r = await api('/workspace/prepare', { method: 'POST' });
@@ -170,12 +170,12 @@ export async function openSettings(focus) {
       c.mode === 'subscription'
         ? el('div', { class: 'field' },
           el('p', { class: 'muted' }, t('claude.loginText')),
-          host && hs.claude.bin && el('button', { class: 'btn', style: 'align-self:flex-start', onclick: () => host.claudeLogin() }, t('claude.loginBtn')))
+          host && hs.claude.bin && el('button', { class: 'btn', style: 'align-self:flex-start', title: t('tip.claudeLogin'), onclick: () => host.claudeLogin() }, t('claude.loginBtn')))
         : el('div', { class: 'field' },
           el('div', { class: 'label' }, t('claude.apiKey'), el('span', { class: 'hint' }, keyState)),
           el('div', { class: 'row' },
             el('input', { class: 'input', type: 'password', placeholder: st.claude.apiKey.set ? t('key.keep') : 'sk-ant-…', autocomplete: 'off', oninput: (e) => { c.apiKey = e.target.value; } }),
-            st.claude.apiKey.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.claude = true; await save(); }) }, t('key.clear'))),
+            st.claude.apiKey.set && el('button', { class: 'btn ghost', title: t('tip.keyClear'), onclick: act(async () => { draft.clear.claude = true; await save(); }) }, t('key.clear'))),
           el('p', { class: 'muted' }, t('claude.apiWhere'), ' ', link('https://console.anthropic.com/settings/keys', 'console.anthropic.com'))),
       el('details', { class: 'more' },
         el('summary', {}, t('claude.more')),
@@ -187,7 +187,7 @@ export async function openSettings(focus) {
       hs.claude.bin ? line(true, t('claude.found')) : line(false, t('claude.notFound')),
       claudeLine(results.claude),
       el('button', {
-        class: 'btn',
+        class: 'btn', title: t('tip.saveCheck'),
         onclick: act(async () => { await save(true); results.claude = await api('/check/claude', { method: 'POST', body: {} }); }),
       }, t('common.saveCheck')));
 
@@ -202,10 +202,10 @@ export async function openSettings(focus) {
         el('div', { class: 'label' }, t('fal.key'), el('span', { class: 'hint' }, falState)),
         el('div', { class: 'row' },
           el('input', { class: 'input', type: 'password', placeholder: st.fal.key.set ? t('key.keep') : 'fal key', autocomplete: 'off', oninput: (e) => { draft.fal.key = e.target.value; } }),
-          st.fal.key.set && el('button', { class: 'btn ghost', onclick: act(async () => { draft.clear.fal = true; await save(); }) }, t('key.clear')))),
+          st.fal.key.set && el('button', { class: 'btn ghost', title: t('tip.keyClear'), onclick: act(async () => { draft.clear.fal = true; await save(); }) }, t('key.clear')))),
       fr && (fr.ok ? line(true, t('fal.ok')) : line(false, errText(fr))),
       el('p', { class: 'muted' }, t('fal.balanceHint')),
-      el('button', { class: 'btn', onclick: act(async () => { await save(true); results.fal = await api('/check/fal', { method: 'POST' }); }) }, t('common.saveCheck')));
+      el('button', { class: 'btn', title: t('tip.saveCheck'), onclick: act(async () => { await save(true); results.fal = await api('/check/fal', { method: 'POST' }); }) }, t('common.saveCheck')));
 
     // ── Blender ──
     const b = draft.blender;
@@ -233,13 +233,13 @@ export async function openSettings(focus) {
       el('div', { class: 'sheet-head' },
         el('div', {}, el('div', { class: 'panel-title' }, t('settings.title')),
           el('div', { class: 'panel-sub' }, todo.length ? t('settings.left', { list: todo.join(' · ') }) : t('settings.allReady'))),
-        el('button', { class: 'btn ghost', onclick: close }, t('common.close'))),
+        el('button', { class: 'btn ghost', title: t('tip.close'), onclick: close }, t('common.close'))),
       el('div', { class: 'sheet-body' }, secUi, secWs, secClaude, secFal, secBl),
       el('div', { class: 'sheet-foot' },
         el('span', { class: 'muted' }, t('settings.foot', { v: hs.version, home: st.home })),
         // «Сохранить» — сохранить и закрыть (просьба владельца 27.09).
         el('button', {
-          class: 'btn primary',
+          class: 'btn primary', title: t('tip.save'),
           onclick: async (e) => {
             e.currentTarget.disabled = true;
             try { await save(); close(); } catch (err) { toast(errText(err), true); e.currentTarget.disabled = false; }

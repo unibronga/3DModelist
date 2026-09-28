@@ -89,14 +89,14 @@ export class Tools {
       class: 'rail-btn' + (on ? ' on' : ''), title, disabled, onclick,
     }, icon(name));
     this.rail.replaceChildren(
-      b('ref', hasRefs ? t('rail.ref') : t('ref.none'), this.state.ref, () => this.toggle('ref'), !hasRefs),
-      b('parts', t('rail.parts'), this.state.parts, () => this.toggle('parts')),
-      b('history', t('hist.hint'), this.state.history, () => this.toggle('history')),
+      b('ref', hasRefs ? t('tip.rail.ref') : t('tip.rail.refNone'), this.state.ref, () => this.toggle('ref'), !hasRefs),
+      b('parts', t('tip.rail.parts'), this.state.parts, () => this.toggle('parts')),
+      b('history', t('tip.rail.history'), this.state.history, () => this.toggle('history')),
       el('div', { class: 'rail-sep' }),
-      b('views', t('rail.views'), this.open === 'views', () => { this.open = this.open === 'views' ? null : 'views'; this.render(); }),
-      b('grid', t('rail.grid'), this.state.grid, () => this.toggle('grid')),
-      b('human', t('rail.human'), this.state.human, () => this.toggle('human')),
-      b('light', t('rail.light'), this.open === 'light', () => { this.open = this.open === 'light' ? null : 'light'; this.render(); }),
+      b('views', t('tip.rail.views'), this.open === 'views', () => { this.open = this.open === 'views' ? null : 'views'; this.render(); }),
+      b('grid', t('tip.rail.grid'), this.state.grid, () => this.toggle('grid')),
+      b('human', t('tip.rail.human'), this.state.human, () => this.toggle('human')),
+      b('light', t('tip.rail.light'), this.open === 'light', () => { this.open = this.open === 'light' ? null : 'light'; this.render(); }),
     );
     this.drawPop();
     this.drawRef();
@@ -121,7 +121,7 @@ export class Tools {
     this.histPanel.replaceChildren(...[
       el('div', { class: 'parts-head' },
         el('span', { class: 'pop-title' }, t('hist.title')),
-        el('button', { class: 'icon-mini', title: t('common.close'), onclick: () => this.toggle('history', false) }, '✕')),
+        el('button', { class: 'icon-mini', title: t('tip.closePanel'), onclick: () => this.toggle('history', false) }, '✕')),
       items.length
         ? el('div', { class: 'parts-list' }, ...items.map((x) => el('div', {
           class: 'hist' + (x.path === shown ? ' on' : ''),
@@ -131,8 +131,8 @@ export class Tools {
         el('div', { class: 'hist-body' }, el('div', { class: 'hist-t' }, x.title), el('div', { class: 'hist-s' }, x.sub)))))
         : el('div', { class: 'muted hist-empty' }, t('hist.empty')),
       old && el('div', { class: 'hist-actions' },
-        el('button', { class: 'btn primary', disabled: h.busy(), title: t('ver.restore.hint'), onclick: () => h.restore(cur.version) }, t('ver.restore', { n: cur.version })),
-        el('button', { class: 'btn ghost', onclick: () => h.pick(newestVer) }, t('ver.latest') + ' ›')),
+        el('button', { class: 'btn primary', disabled: h.busy(), title: t('tip.verRestore'), onclick: () => h.restore(cur.version) }, t('ver.restore', { n: cur.version })),
+        el('button', { class: 'btn ghost', title: t('tip.verLatest'), onclick: () => h.pick(newestVer) }, t('ver.latest') + ' ›')),
     ].filter(Boolean));
   }
 
@@ -143,7 +143,7 @@ export class Tools {
     const btn = this.rail.querySelectorAll('.rail-btn')[this.open === 'views' ? 3 : 6];
     this.pop.style.top = this.rail.offsetTop + (btn?.offsetTop || 0) + 'px';
     if (this.open === 'views') {
-      const v = (name) => el('button', { class: 'btn', onclick: () => this.viewer.setView(name) }, t('view.' + name));
+      const v = (name) => el('button', { class: 'btn', title: t('tip.viewDir', { name: t('view.' + name) }), onclick: () => this.viewer.setView(name) }, t('view.' + name));
       this.pop.replaceChildren(el('div', { class: 'pop-title' }, t('rail.views')),
         el('div', { class: 'views-grid' }, v('front'), v('back'), v('left'), v('right'), v('top'), v('q34')));
       return;
@@ -162,7 +162,7 @@ export class Tools {
       el('label', { class: 'check' },
         el('input', { type: 'checkbox', checked: this.state.spin, onchange: (e) => { this.state.spin = e.target.checked; this.viewer.setSpin(this.state.spin); } }),
         el('span', {}, t('light.spin'))),
-      el('button', { class: 'btn ghost', onclick: () => { setL({ power: 1, angle: 0 }); this.drawPop(); } }, t('light.reset')));
+      el('button', { class: 'btn ghost', title: t('tip.lightReset'), onclick: () => { setL({ power: 1, angle: 0 }); this.drawPop(); } }, t('light.reset')));
   }
 
   // ── референс поверх окна ────────────────────────────────────────────────
@@ -205,10 +205,10 @@ export class Tools {
     const go = (d) => { this.refIdx = (i + d + list.length) % list.length; this.refView = { k: 1, x: 0, y: 0 }; this.drawRef(); };
     const head = el('div', { class: 'ref-head' },
       el('span', { class: 'ref-title' }, t('ref.title'), list.length > 1 ? ` · ${i + 1}/${list.length}` : ''),
-      list.length > 1 && el('button', { class: 'icon-mini', title: '←', onclick: () => go(-1) }, '‹'),
-      list.length > 1 && el('button', { class: 'icon-mini', title: '→', onclick: () => go(1) }, '›'),
-      el('button', { class: 'icon-mini', title: this.refFull ? t('ref.restore') : t('ref.full'), onclick: () => this.toggleRefFull() }, this.refFull ? '⤡' : '⤢'),
-      el('button', { class: 'icon-mini', title: t('common.close'), onclick: () => this.toggle('ref', false) }, '✕'));
+      list.length > 1 && el('button', { class: 'icon-mini', title: t('tip.refPrev'), onclick: () => go(-1) }, '‹'),
+      list.length > 1 && el('button', { class: 'icon-mini', title: t('tip.refNext'), onclick: () => go(1) }, '›'),
+      el('button', { class: 'icon-mini', title: this.refFull ? t('tip.refRestore') : t('tip.refFull'), onclick: () => this.toggleRefFull() }, this.refFull ? '⤡' : '⤢'),
+      el('button', { class: 'icon-mini', title: t('tip.closePanel'), onclick: () => this.toggle('ref', false) }, '✕'));
     drag(head, (dx, dy) => {
       this.refBox.left = Math.max(0, this.refBox.left + dx);
       this.refBox.top = Math.max(0, this.refBox.top + dy);
@@ -276,8 +276,8 @@ export class Tools {
     this.partsPanel.replaceChildren(...[
       el('div', { class: 'parts-head' },
         el('span', { class: 'pop-title' }, t('parts.title', { n: parts.length })),
-        v.hidden.size > 0 && el('button', { class: 'link-btn', onclick: () => v.showAll() }, t('parts.showAll')),
-        el('button', { class: 'icon-mini', title: t('common.close'), onclick: () => this.toggle('parts', false) }, '✕')),
+        v.hidden.size > 0 && el('button', { class: 'link-btn', title: t('tip.partsShowAll'), onclick: () => v.showAll() }, t('parts.showAll')),
+        el('button', { class: 'icon-mini', title: t('tip.closePanel'), onclick: () => this.toggle('parts', false) }, '✕')),
       parts.length
         ? el('div', { class: 'parts-list' }, ...parts.map((p) => {
           const hidden = v.hidden.has(p.key);
@@ -289,7 +289,7 @@ export class Tools {
             onmouseenter: () => v.hover(p.meshes[0]),
             onmouseleave: () => v.hover(null),
           },
-          el('button', { class: 'eye-btn', title: hidden ? t('parts.show') : t('parts.hide'), onclick: () => v.setPartHidden(p.key, !hidden) }, eye(hidden)),
+          el('button', { class: 'eye-btn', title: hidden ? t('tip.partShow') : t('tip.partHide'), onclick: () => v.setPartHidden(p.key, !hidden) }, eye(hidden)),
           el('span', { class: 'part-name' }, p.name),
           el('span', { class: 'part-tris' }, num(Math.round(p.tris))));
         }))

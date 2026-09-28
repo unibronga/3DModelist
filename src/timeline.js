@@ -59,19 +59,19 @@ export class Timeline {
       el('button', { class: 'btn tl-btn' + (on ? ' on' : ''), title, disabled, onclick }, label);
     const easeSeg = el('div', { class: 'seg tl-ease', title: t('tl.ease.hint') },
       ...['smooth', 'linear', 'step'].map((e) => el('button', {
-        class: view.ease === e ? 'on' : '', disabled: !sel, onclick: () => this.cb.onEase(e),
+        class: view.ease === e ? 'on' : '', disabled: !sel, title: t('tip.ease.' + e), onclick: () => this.cb.onEase(e),
       }, t('tl.ease.' + e))));
     this.frameLabel = el('span', { class: 'tl-frame' });
     const bar = el('div', { class: 'tl-bar' },
-      btn(playing ? '❚❚' : '▶', t(playing ? 'tl.pause' : 'tl.play') + ' — Space', () => this.cb.onPlay(), { on: playing }),
+      btn(playing ? '❚❚' : '▶', t(playing ? 'tip.tl.pause' : 'tip.tl.play'), () => this.cb.onPlay(), { on: playing }),
       btn('⟲', t('tl.loop.hint'), () => this.cb.onLoop(!clip.loop), { on: clip.loop }),
       this.frameLabel,
       el('span', { class: 'tl-name' }, clip.name),
       el('span', { class: 'tl-sp' }),
       btn('◆ ' + t('tl.key'), t('tl.key.hint'), () => this.cb.onKey()),
       btn('⇋ ' + t('tl.mirror'), t('tl.mirror.hint'), () => this.cb.onMirror()),
-      btn(t('tl.copy'), t('tl.copy.hint') + ' — ⌘C', () => this.cb.onCopy()),
-      btn(t('tl.paste'), t('tl.paste.hint') + ' — ⌘V', () => this.cb.onPaste(), { disabled: !view.canPaste }),
+      btn(t('tl.copy'), t('tl.copy.hint'), () => this.cb.onCopy()),
+      btn(t('tl.paste'), t('tl.paste.hint'), () => this.cb.onPaste(), { disabled: !view.canPaste }),
       easeSeg,
       btn('✕', t('tl.delete.hint'), () => this.cb.onDelete(), { disabled: !sel }));
 

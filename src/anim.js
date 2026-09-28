@@ -1234,8 +1234,8 @@ export class Animator {
     }
     const field = (...kids) => el('div', { class: 'field' }, ...kids);
     const way = el('div', { class: 'seg full' },
-      el('button', { class: this.way === 'manual' ? 'on' : '', onclick: () => this.setWay('manual') }, t('anim.way.manual')),
-      el('button', { class: this.way === 'points' ? 'on' : '', onclick: () => this.setWay('points') }, t('anim.way.points')));
+      el('button', { class: this.way === 'manual' ? 'on' : '', title: t('tip.way.manual'), onclick: () => this.setWay('manual') }, t('anim.way.manual')),
+      el('button', { class: this.way === 'points' ? 'on' : '', title: t('tip.way.points'), onclick: () => this.setWay('points') }, t('anim.way.points')));
 
     if (s === 'points') {
       const next = this.nextPoint();
@@ -1245,12 +1245,12 @@ export class Animator {
           el('ol', { class: 'anim-points' }, ...HUMAN_POINTS.map((k) => el('li', { class: this.markers[k] ? 'done' : k === next ? 'next' : '' },
             el('span', { class: 'pt-mark' }, this.markers[k] ? '✓' : ''), t('anim.pt.' + k))))),
         field(el('div', { class: 'row' },
-          el('button', { class: 'btn', disabled: !Object.keys(this.markers).length, onclick: () => this.undoPoint() }, '↶ ' + t('anim.undo')),
-          el('button', { class: 'btn', onclick: () => this.turn() }, '↻ ' + t('anim.turn'))),
+          el('button', { class: 'btn', disabled: !Object.keys(this.markers).length, title: t('tip.undoPoint'), onclick: () => this.undoPoint() }, '↶ ' + t('anim.undo')),
+          el('button', { class: 'btn', title: t('tip.turn'), onclick: () => this.turn() }, '↻ ' + t('anim.turn'))),
         el('div', { class: 'muted small' }, t('anim.turn.hint'))));
     } else if (s === 'skeleton') {
       const sb = this.rbone(this.bsel);
-      const tool = (id, label) => el('button', { class: this.tool === id ? 'on' : '', onclick: () => { this.tool = id; this.onChange(); } }, label);
+      const tool = (id, label) => el('button', { class: this.tool === id ? 'on' : '', title: t('tip.tool.' + id), onclick: () => { this.tool = id; this.onChange(); } }, label);
       wrap.append(...[
         field(el('div', { class: 'label' }, t('anim.skeleton')), way),
         field(el('div', { class: 'seg full' }, tool('add', t('anim.tool.add')), tool('move', t('anim.tool.move'))),
@@ -1261,22 +1261,22 @@ export class Animator {
         this.boneList(),
         !!sb && field(el('div', { class: 'label' }, t('anim.bone.sel')),
           el('input', { class: 'input', value: sb.name, title: boneLabel(sb.name), onchange: (e) => this.renameBone(e.target.value) }),
-          el('button', { class: 'btn danger wide', onclick: () => this.deleteBone() }, t('anim.bone.delete') + ' — Delete')),
+          el('button', { class: 'btn danger wide', title: t('tip.boneDelete'), onclick: () => this.deleteBone() }, t('anim.bone.delete'))),
         field(
-          el('button', { class: 'btn primary wide', disabled: !this.rbones.length, onclick: () => this.bind() }, t('anim.bind')),
+          el('button', { class: 'btn primary wide', disabled: !this.rbones.length, title: t('tip.bind'), onclick: () => this.bind() }, t('anim.bind')),
           el('div', { class: 'row' },
-            el('button', { class: 'btn', disabled: !this.undoStack.length, onclick: () => this.undo() }, '↶ ' + t('anim.undo') + ' — ⌘Z'),
-            el('button', { class: 'btn', onclick: () => this.turn() }, '↻ ' + t('anim.turn'))),
-          el('button', { class: 'btn wide', disabled: !this.rbones.length, onclick: () => this.clearSkeleton() }, t('anim.restart')),
+            el('button', { class: 'btn', disabled: !this.undoStack.length, title: t('tip.undo'), onclick: () => this.undo() }, '↶ ' + t('anim.undo')),
+            el('button', { class: 'btn', title: t('tip.turn'), onclick: () => this.turn() }, '↻ ' + t('anim.turn'))),
+          el('button', { class: 'btn wide', disabled: !this.rbones.length, title: t('tip.restart'), onclick: () => this.clearSkeleton() }, t('anim.restart')),
           // Скелет не трогали — можно вернуться к прежней привязке.
-          !!this.st.skin && el('button', { class: 'btn wide', onclick: () => this.cancelEdit() }, t('anim.keep'))),
+          !!this.st.skin && el('button', { class: 'btn wide', title: t('tip.keep'), onclick: () => this.cancelEdit() }, t('anim.keep'))),
       ].filter(Boolean));   // DOM-append печатает false словом
     } else if (s === 'binding') {
       wrap.append(field(el('div', { class: 'label' }, t('anim.skeleton')), el('div', { class: 'typing' }, t('anim.binding'))));
     } else if (s === 'bound') {
       wrap.append(field(el('div', { class: 'row between' },
         el('div', { class: 'anim-ok' }, '✓ ' + t('anim.bound')),
-        el('button', { class: 'link-btn', onclick: () => this.editRig() }, t('anim.editRig')))));
+        el('button', { class: 'link-btn', title: t('tip.editRig'), onclick: () => this.editRig() }, t('anim.editRig')))));
       if (!this.clip) {
         const slider = el('input', {
           type: 'range', class: 'range', min: 0, max: 1, step: 0.01, value: this.bend,
@@ -1327,24 +1327,24 @@ export class Animator {
         el('div', { class: 'pack-head' },
           el('span', { class: 'pack-ico', html: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' }),
           el('input', { class: 'input pack-name', value: p.name, title: t('anim.pack.rename'), onchange: (e) => this.renamePack(p.id, e.target.value) }),
-          el('button', { class: 'link-btn', title: t('anim.clip.add'), onclick: () => this.addClip(p.id) }, '+ ' + t('anim.clip.new').toLowerCase()),
-          !clips.length && el('button', { class: 'icon-mini', title: t('anim.pack.delete'), onclick: () => this.deletePack(p.id) }, '✕')),
+          el('button', { class: 'link-btn', title: t('tip.clipAdd'), onclick: () => this.addClip(p.id) }, '+ ' + t('anim.clip.new').toLowerCase()),
+          !clips.length && el('button', { class: 'icon-mini', title: t('tip.packDelete'), onclick: () => this.deletePack(p.id) }, '✕')),
         ...clips.map((c) => el('button', {
-          class: 'clip-item' + (c === this.clip ? ' on' : ''),
+          class: 'clip-item' + (c === this.clip ? ' on' : ''), title: t('tip.clipItem'),
           onclick: () => (c === this.clip ? this.closeClip() : this.openClip(c.id)),
         }, el('span', {}, c.name + (c.loop ? ' ⟲' : '')), el('span', { class: 'muted' }, t('anim.frames.n', { n: c.frames }))))));
     }
     // Паки без движений (чужие id) — движения всё равно видны.
     const orphans = this.clips.filter((c) => !this.packs.some((p) => p.id === c.pack));
-    for (const c of orphans) list.append(el('button', { class: 'clip-item' + (c === this.clip ? ' on' : ''), onclick: () => this.openClip(c.id) }, c.name));
+    for (const c of orphans) list.append(el('button', { class: 'clip-item' + (c === this.clip ? ' on' : ''), title: t('tip.clipItem'), onclick: () => this.openClip(c.id) }, c.name));
     return el('div', { class: 'field' },
       el('div', { class: 'label' }, t('anim.clips')),
       el('div', { class: 'muted small' }, t('anim.packs.hint')),
       !this.clips.length && el('div', { class: 'muted small' }, t('anim.clips.none')),
       list,
       el('div', { class: 'row' },
-        el('button', { class: 'btn', onclick: () => this.addClip(this.clip?.pack) }, '+ ' + t('anim.clip.new')),
-        el('button', { class: 'btn', onclick: () => this.newPack() }, '+ ' + t('anim.pack.new'))));
+        el('button', { class: 'btn', title: t('tip.clipNew'), onclick: () => this.addClip(this.clip?.pack) }, '+ ' + t('anim.clip.new')),
+        el('button', { class: 'btn', title: t('tip.packNew'), onclick: () => this.newPack() }, '+ ' + t('anim.pack.new'))));
   }
 
   // Выбранное движение: имя, длина, скорость, по кругу, пак.
@@ -1356,19 +1356,19 @@ export class Animator {
       el('div', { class: 'row' },
         el('label', { class: 'anim-num' }, t('anim.frames'),
           el('input', { class: 'input', type: 'number', min: 2, max: 2000, value: c.frames, onchange: (e) => { const n = Math.round(Number(e.target.value)); if (n >= 2 && n <= 2000) this.updateClip({ frames: n }); } })),
-        el('div', { class: 'seg' }, ...[24, 30, 60].map((f) => el('button', { class: c.fps === f ? 'on' : '', onclick: () => this.updateClip({ fps: f }) }, t('anim.fps', { n: f }))))),
+        el('div', { class: 'seg' }, ...[24, 30, 60].map((f) => el('button', { class: c.fps === f ? 'on' : '', title: t('tip.fps', { n: f }), onclick: () => this.updateClip({ fps: f }) }, t('anim.fps', { n: f }))))),
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: c.loop, onchange: (e) => this.updateClip({ loop: e.target.checked }) }), t('anim.loop')),
       this.packs.length > 1 && el('select', { class: 'input', onchange: (e) => this.updateClip({ pack: e.target.value }) },
         ...this.packs.map((p) => el('option', { value: p.id, selected: p.id === c.pack }, t('anim.inPack', { name: p.name })))),
       el('div', { class: 'muted small' }, t(this.sel ? 'anim.pose.hint' : 'anim.pick.hint')),
-      el('button', { class: 'btn danger wide', onclick: () => this.removeClip() }, t('anim.clip.delete')));
+      el('button', { class: 'btn danger wide', title: t('tip.clipDelete'), onclick: () => this.removeClip() }, t('anim.clip.delete')));
   }
 
   exportField() {
     const busy = this.exporting;
     const packs = this.packs.filter((p) => this.clips.some((c) => c.pack === p.id));
     this.expPack = packs.some((p) => p.id === this.expPack) ? this.expPack : null;
-    const dl = (fmt, hint) => el('button', { class: 'btn dl-btn', disabled: !!busy, onclick: () => this.exportAnim(this.expPack, fmt) },
+    const dl = (fmt, hint) => el('button', { class: 'btn dl-btn', disabled: !!busy, title: t('tip.exp.' + fmt), onclick: () => this.exportAnim(this.expPack, fmt) },
       el('span', { class: 'dl-fmt' }, fmt === 'blend' ? '.blend' : fmt.toUpperCase()), el('span', { class: 'dl-hint' }, busy === fmt ? t('anim.exp.busy') : hint));
     return el('div', { class: 'field' },
       el('div', { class: 'label' }, t('anim.exp')),

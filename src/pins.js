@@ -109,11 +109,11 @@ export class Pins {
         },
       });
       const node = el('div', { class: 'pin' + (pin === this.editing ? ' open' : '') },
-        el('button', { class: 'pin-n', title: pin.part || t('pin.noPart'), onclick: () => (this.editing === pin ? this.close() : this.open(pin)) }, String(i + 1)),
+        el('button', { class: 'pin-n', title: t('tip.pinN', { n: i + 1, part: pin.part || t('pin.noPart') }), onclick: () => (this.editing === pin ? this.close() : this.open(pin)) }, String(i + 1)),
         input && el('div', { class: 'pin-pop' },
           el('div', { class: 'pin-part' }, pin.part || t('pin.noPart')),
           el('div', { class: 'row' }, input,
-            el('button', { class: 'btn ghost danger', title: t('pin.remove'), onclick: () => this.remove(pin) }, '✕'))));
+            el('button', { class: 'btn ghost danger', title: t('tip.pinRemove'), onclick: () => this.remove(pin) }, '✕'))));
       pin.node = node;
       this.layer.append(node);
     });

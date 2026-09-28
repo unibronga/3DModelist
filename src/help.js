@@ -20,7 +20,7 @@ function sheet(title, body, wide = false) {
   back.addEventListener('click', (e) => { if (e.target === back) close(); });
   back.append(el('div', { class: 'sheet' + (wide ? ' wide' : '') },
     el('div', { class: 'sheet-head' }, el('div', { class: 'panel-title' }, title),
-      el('button', { class: 'btn ghost', onclick: close }, t('common.close'))),
+      el('button', { class: 'btn ghost', title: t('tip.close'), onclick: close }, t('common.close'))),
     el('div', { class: 'sheet-body' }, ...body)));
   document.body.append(back);
 }

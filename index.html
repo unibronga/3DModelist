@@ -30,12 +30,12 @@
         </div>
       </div>
       <div class="blender" id="blender"><span class="dot"></span><span class="txt">Blender…</span></div>
-      <button class="btn primary wide" id="new-task">＋ <span data-i18n="side.new"></span></button>
+      <button class="btn primary wide" id="new-task" data-i18n-title="tip.newTask">＋ <span data-i18n="side.new"></span></button>
 
       <div class="side-head" data-i18n="side.tasks"></div>
       <nav class="list" id="tasks"></nav>
 
-      <div class="side-head row-head"><span data-i18n="side.library" data-i18n-title="lib.sub.short"></span><button class="link-btn" id="lib-all"><span data-i18n="lib.all"></span> ›</button></div>
+      <div class="side-head row-head"><span data-i18n="side.library" data-i18n-title="lib.sub.short"></span><button class="link-btn" id="lib-all" data-i18n-title="tip.libAll"><span data-i18n="lib.all"></span> ›</button></div>
       <nav class="list" id="library"></nav>
 
       <div class="side-foot">
@@ -44,7 +44,7 @@
           <span class="avatar" id="acct-avatar">··</span>
           <span class="acct-name" id="acct-name">…</span>
           <span class="acct-plan" id="acct-plan"></span>
-          <button class="icon-btn" id="open-settings" data-i18n-title="settings.title">
+          <button class="icon-btn" id="open-settings" data-i18n-title="tip.settings">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1.03z"/></svg>
           </button>
         </div>
@@ -56,14 +56,14 @@
     <main class="stage">
       <div class="toolbar">
         <div class="seg" id="view-mode">
-          <button data-mode="material" class="on" data-i18n="view.material" data-i18n-title="view.material.hint"></button>
-          <button data-mode="clay" data-i18n="view.clay" data-i18n-title="view.clay.hint"></button>
-          <button data-mode="wire" data-i18n="view.wire" data-i18n-title="view.wire.hint"></button>
-          <button data-mode="normals" data-i18n="view.normals" data-i18n-title="view.normals.hint"></button>
+          <button data-mode="material" class="on" data-i18n="view.material" data-i18n-title="tip.view.material"></button>
+          <button data-mode="clay" data-i18n="view.clay" data-i18n-title="tip.view.clay"></button>
+          <button data-mode="wire" data-i18n="view.wire" data-i18n-title="tip.view.wire"></button>
+          <button data-mode="normals" data-i18n="view.normals" data-i18n-title="tip.view.normals"></button>
         </div>
-        <button class="chip-btn on" id="flat" data-i18n="view.flat" data-i18n-title="view.flat.hint"></button>
-        <button class="chip-btn" id="fit" data-i18n="view.fit" data-i18n-title="view.fit.hint"></button>
-        <button class="chip-btn" id="pin" data-i18n="view.pin" data-i18n-title="view.pin.hint"></button>
+        <button class="chip-btn on" id="flat" data-i18n="view.flat" data-i18n-title="tip.view.flat"></button>
+        <button class="chip-btn" id="fit" data-i18n="view.fit" data-i18n-title="tip.view.fit"></button>
+        <button class="chip-btn" id="pin" data-i18n="view.pin" data-i18n-title="tip.view.pin"></button>
       </div>
       <div class="model-info" id="model-info"></div>
       <div class="process" id="process" hidden></div>

@@ -62,9 +62,12 @@ reference from four angles, and export to `.blend` + GLB.
 - **One selection on the left** — a task or a finished model, and the right
   side always shows that one. A finished model shows the task it came from,
   its references and download buttons.
-- **Animate a finished model** — the Animation tab on the right. A "Human"
-  skeleton is placed from five points (chin, wrist, elbow, knee, groin — the
-  other side is mirrored), joints can be dragged; "Bind to the model" lets a
+- **Animate a finished model** — the Animation tab on the right. Build the
+  skeleton by hand: press on the model and drag to grow a bone, drag from its
+  end to grow the next; move joints from any side (the model turns see-through,
+  left side blue, right side green, Mirror builds both at once, ⌘Z undoes). A
+  quick start is "Human from points" (chin, wrist, elbow, knee, groin), then
+  edit it the same way; "Bind to the model" lets a
   windowless Blender compute which bone holds which part (generator meshes cut
   along seams too). Check it with the Bend slider and bone colouring. Motions
   live in packs: click a bone for rotation rings, release to set a key on the

@@ -19,6 +19,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const py = (name) => fs.readFileSync(path.join(HERE, 'py', name), 'utf8');
 
 const dirOf = (name) => path.join(ws(), 'anim', name);
+// Имя кости: буквы любого алфавита, цифры и _ (точка и пробел ломают имена в three.js).
+const BONE_NAME = /^[\p{L}\p{N}_]{1,40}$/u;
 const rel = (abs) => path.relative(ws(), abs).split(path.sep).join('/');
 
 function readJson(abs, def = null) {
@@ -112,12 +114,18 @@ export function saveRig(name, rig) {
   model(name);
   const joints = rig?.joints && typeof rig.joints === 'object' ? rig.joints : null;
   const okPoint = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
-  if (!joints || !Object.values(joints).every(okPoint) || !Array.isArray(rig.bones)
-    || !rig.bones.every((b) => b && /^\w+$/.test(b.name) && joints[b.head] && joints[b.tail])) {
+  const bones = Array.isArray(rig.bones) ? rig.bones : [];
+  const names = new Set(bones.map((b) => b?.name));
+  if (!joints || !Object.values(joints).every(okPoint) || !bones.length || names.size !== bones.length
+    || !bones.every((b) => b && BONE_NAME.test(b.name) && joints[b.head] && joints[b.tail] && (!b.parent || names.has(b.parent)))) {
     throw new UserError('animBadRig');
   }
   const d = dirOf(name);
-  writeJson(path.join(d, 'rig.json'), { type: rig.type || 'human', markers: rig.markers || {}, joints, bones: rig.bones });
+  writeJson(path.join(d, 'rig.json'), {
+    type: rig.type === 'human' ? 'human' : 'custom', cx: Number.isFinite(rig.cx) ? rig.cx : null,
+    markers: rig.markers || {}, joints,
+    bones: bones.map(({ name: n, parent, head, tail }) => ({ name: n, parent: parent || null, head, tail })),
+  });
   // Скелет поменялся — прежняя привязка к нему уже не подходит.
   for (const f of ['skin.glb', 'skin.json']) fs.rmSync(path.join(d, f), { force: true });
   return state(name);
@@ -155,7 +163,7 @@ export function saveClip(name, id, clip) {
     && (!k.p || (Array.isArray(k.p) && k.p.length === 3 && k.p.every(num)));
   if (!okId(id) || !clip || typeof clip.name !== 'string' || !Number.isInteger(clip.frames) || clip.frames < 1 || clip.frames > 2000
     || ![12, 24, 25, 30, 60].includes(clip.fps) || typeof clip.keys !== 'object'
-    || !Object.entries(clip.keys).every(([b, ks]) => /^\w+$/.test(b) && Array.isArray(ks) && ks.every(okKey))) {
+    || !Object.entries(clip.keys).every(([b, ks]) => BONE_NAME.test(b) && Array.isArray(ks) && ks.every(okKey))) {
     throw new UserError('animBadClip');
   }
   const out = {

@@ -1116,3 +1116,8 @@ kbd {
 .tl-key.all { background: var(--text); }
 .tl-key.on { background: #f08c00; }
 .tl-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.anim-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.anim-legend .lg { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.anim-legend .lg.l { background: #3b5bdb; }
+.anim-legend .lg.r { background: #0ca678; margin-left: 6px; }
+.anim-panel .row .btn { flex: 1; }

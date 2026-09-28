@@ -88,8 +88,11 @@ export function buildHuman(markers, box) {
   return j;
 }
 
-// Пара сустава на другой стороне: elbow.L ↔ elbow.R; у осевых — null.
-export const pairOf = (name) => (/\.L$/.test(name) ? name.replace(/L$/, 'R') : /\.R$/.test(name) ? name.replace(/R$/, 'L') : null);
-export const pairBone = (name) => (/^Left/.test(name) ? name.replace(/^Left/, 'Right') : /^Right/.test(name) ? name.replace(/^Right/, 'Left') : null);
+// Сторона сустава или кости: L — левая персонажа (+X), R — правая, C — ось.
+// «Человек»: elbow.L, LeftUpperArm; свои кости и суставы: j3_L, Bone3_L.
+export const sideOf = (id) => (/^Left|[._]L$/.test(id) ? 'L' : /^Right|[._]R$/.test(id) ? 'R' : 'C');
+// Пара на другой стороне: elbow.L ↔ elbow.R, j3_L ↔ j3_R; у осевых — null.
+export const pairOf = (id) => (/[._]L$/.test(id) ? id.slice(0, -1) + 'R' : /[._]R$/.test(id) ? id.slice(0, -1) + 'L' : null);
+export const pairBone = (name) => (/^Left/.test(name) ? name.replace(/^Left/, 'Right') : /^Right/.test(name) ? name.replace(/^Right/, 'Left') : pairOf(name));
 
 export { lerp };

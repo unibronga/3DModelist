@@ -425,6 +425,8 @@ export class Viewer {
   }
 
   setMode(mode) { this.hovered = null; this.mode = mode; this.apply(); }
+  // Рентген: модель полупрозрачная — видно скелет внутри (пока его строят).
+  setXray(on) { if (this.xray === !!on) return; this.xray = !!on; this.apply(); }
   setFlat(flat) { this.flat = flat; this.apply(); }
 
   apply() {
@@ -434,6 +436,11 @@ export class Viewer {
       const mats = this.mode === 'material' ? o.userData.orig : this.mode === 'normals' ? [o.userData.normal] : [o.userData.clay];
       for (const m of mats) {
         if (m.flatShading !== this.flat) { m.flatShading = this.flat; m.needsUpdate = true; }
+        const b = (m.userData.base ||= { transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite });
+        const tr = !!this.xray || b.transparent;
+        if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; }
+        m.opacity = this.xray ? Math.min(b.opacity, 0.4) : b.opacity;
+        m.depthWrite = this.xray ? false : b.depthWrite;
       }
       o.material = mats.length === 1 ? mats[0] : mats;
       o.userData.wire.visible = this.mode === 'wire' && !o.isSkinnedMesh;   // рёбра с костями не гнутся

@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { ws, tasksDir, loadTask } from './store.mjs';
+import { ws, tasksDir, loadTask, listTasks } from './store.mjs';
 
 export const MODEL_EXT = ['.glb', '.gltf', '.fbx', '.obj'];
 const IMG_EXT = ['.png', '.jpg', '.jpeg', '.webp'];
@@ -114,14 +114,18 @@ export function specTarget(text) {
 export function taskMedia(task) {
   const ROOT = ws();
   const since = task.created_at - 5;
+  // Свежие файлы без своей папки — задачи, но папки других задач чужие, даже
+  // если новее: сундук попадал в Pers-1 и открывался при её выборе (28.09).
+  const others = listTasks().filter((x) => x.id !== task.id).map((x) => x.slug);
+  const fresh = (f) => f.mtime >= since && !others.some((s) => f.path.startsWith(`out/${s}/`) || f.path.startsWith(`renders/${s}/`));
   const frames = walk(path.join(ROOT, 'renders'), 2).filter(isImage)
-    .filter((f) => f.mtime >= since || f.path.startsWith(`renders/${task.slug}/`))
+    .filter((f) => fresh(f) || f.path.startsWith(`renders/${task.slug}/`))
     .sort((a, b) => b.mtime - a.mtime).slice(0, 40);
   // Превью, которое рисует сам генератор, — тоже кадр: по нему видно, что вышло.
   const genShots = walk(path.join(ROOT, 'out', task.slug), 2).filter(isImage).filter((f) => f.path.includes('/gen_') && !/texture|_map/.test(f.path));
   frames.unshift(...genShots);
   const models = walk(path.join(ROOT, 'out'), 3).filter(isModel)
-    .filter((f) => f.path.startsWith(`out/${task.slug}/`) || f.mtime >= since)
+    .filter((f) => f.path.startsWith(`out/${task.slug}/`) || fresh(f))
     .sort((a, b) => b.mtime - a.mtime);
   const blend = path.join('models', task.slug + '.blend');
   const spec = path.join('refs', task.slug, 'spec.md');

@@ -1044,5 +1044,6 @@ kbd {
 .dl-hint { color: var(--text-3); font-weight: 400; font-size: 12px; }
 .dl-btn:hover .dl-hint { color: inherit; }
 .done-hint { line-height: 1.5; }
+.lib-task { width: 100%; text-align: left; padding: 10px 12px; }
 
 .pin-quick.on { background: var(--sel-bg); border-color: var(--sel-line); color: var(--sel-fg); }

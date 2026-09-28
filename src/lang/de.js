@@ -505,6 +505,8 @@ export default {
   "dl.obj.hint": "universell, ZIP mit Farben (.mtl)",
   "done.refs": "Referenzen",
   "done.hint": "Das Modell ist fertig. Für Änderungen: „Wieder öffnen“ unter dem Modell.",
+  "lib.task": "Aufgabe",
+  "lib.hint": "Die Modelldateien liegen im Ordner {path}.",
   "err.exportFail": "In diesem Format ließ sich nicht speichern: {msg}",
   "who.critic": "Prüfer",
   "who.helper": "Helfer",

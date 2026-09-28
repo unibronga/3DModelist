@@ -53,6 +53,7 @@ const S = {
   library: [],
   refsTree: null,
   sel: null,              // id выбранной задачи; null — форма новой модели
+  libSel: null,           // имя выбранной готовой модели; слева выбрано что-то одно
   task: null,
   events: [],
   eventsTotal: 0,
@@ -118,7 +119,7 @@ $('#pin').addEventListener('click', () => togglePinMode());
 
 // Инструменты окна: референс задачи поверх модели, части, ракурсы, пол, человек, свет.
 const tools = new Tools(viewer, $('#viewport'), {
-  refs: () => (S.task?.refs || []).map((p) => fileUrl(p)),
+  refs: () => curRefs().map((p) => fileUrl(p)),
   history: {
     items: () => historyItems().map((x) => ({ ...x, thumbUrl: x.thumb && fileUrl(x.thumb) })),
     shown: () => S.shown,
@@ -194,7 +195,6 @@ async function showModel(rel, { manual = false, version = null } = {}) {
   renderModelInfo();
   tools.renderHistory();
   renderModelBar();
-  renderLibrary();
 }
 
 // Режим вида и грани — одни функции для кнопок, меню и клавиш.
@@ -287,30 +287,70 @@ function renderDonePanel() {
   const tk = S.task;
   const menuBtn = el('button', { class: 'icon-btn', title: t('task.menu'), onclick: (e) => taskMenu(e.currentTarget, tk) },
     el('span', { html: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>' }));
-  const dl = (fmt) => el('button', { class: 'btn dl-btn', onclick: () => downloadAs(fmt) },
-    el('span', { class: 'dl-fmt' }, fmt.toUpperCase()), el('span', { class: 'dl-hint' }, t('dl.' + fmt + '.hint')));
-  const refs = tk.refs || [];
   $('#panel').replaceChildren(
     el('div', { class: 'panel-head' },
       el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, tk.name), menuBtn),
       el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
         el('span', { class: 'panel-sub' }, [routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })].join(' · ')))),
     el('div', { class: 'panel-scroll' },
-      refs.length > 0 && el('div', { class: 'field' },
-        el('div', { class: 'label' }, t('done.refs')),
-        el('div', { class: 'refs done-refs' }, ...refs.map((p, i) => el('div', {
-          class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(refs, i),
-        })))),
-      el('div', { class: 'field' },
-        el('div', { class: 'label' }, t('dl.title')),
-        modelSource() ? el('div', { class: 'dl-list' }, dl('glb'), dl('fbx'), dl('obj')) : el('div', { class: 'muted' }, t('dl.none'))),
+      refsField(tk.refs || []),
+      dlField(),
       el('div', { class: 'muted done-hint' }, t('done.hint'))));
   tools.render();
   renderModelInfo();
 }
 
+function refsField(refs) {
+  return refs.length > 0 && el('div', { class: 'field' },
+    el('div', { class: 'label' }, t('done.refs')),
+    el('div', { class: 'refs done-refs' }, ...refs.map((p, i) => el('div', {
+      class: 'ref', style: `background-image:url("${fileUrl(p)}")`, title: p, onclick: () => openImages(refs, i),
+    }))));
+}
+
+function dlField() {
+  const dl = (fmt) => el('button', { class: 'btn dl-btn', onclick: () => downloadAs(fmt) },
+    el('span', { class: 'dl-fmt' }, fmt.toUpperCase()), el('span', { class: 'dl-hint' }, t('dl.' + fmt + '.hint')));
+  return el('div', { class: 'field' },
+    el('div', { class: 'label' }, t('dl.title')),
+    modelSource() ? el('div', { class: 'dl-list' }, dl('glb'), dl('fbx'), dl('obj')) : el('div', { class: 'muted' }, t('dl.none')));
+}
+
+// Готовая модель, выбранная слева: справа — задача, из которой она вышла,
+// её референсы и скачивание. Чинить модель — в её задаче (владелец 28.09).
+let libPanelKey = '';
+const libKey = () => JSON.stringify([S.libSel, libModel()?.files.length, libModel()?.blend, libTask()?.id, libTask()?.name, getLang()]);
+function renderLibPanel() {
+  const m = libModel();
+  if (!m) return;
+  const src = libTask();
+  libPanelKey = libKey();
+  $('#panel').replaceChildren(
+    el('div', { class: 'panel-head' },
+      el('div', { class: 'panel-title' }, m.name),
+      el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
+        el('span', { class: 'panel-sub' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')))),
+    el('div', { class: 'panel-scroll' },
+      !!src && el('div', { class: 'field' },
+        el('div', { class: 'label' }, t('lib.task')),
+        el('button', { class: 'btn lib-task', onclick: () => selectTask(src.id) }, src.name + ' →')),
+      refsField(src?.refs || []),
+      dlField(),
+      el('div', { class: 'muted done-hint' }, t('lib.hint', { path: `out/${m.name}` }))));
+  tools.render();
+  renderModelInfo();
+}
+// Опрос списков: перерисовать панель модели, только если она поменялась.
+function syncLibPanel() {
+  if (S.libSel && libKey() !== libPanelKey) renderLibPanel();
+}
+
 // Какую модель скачивать: открытую в окне, если она этой задачи, иначе последнюю.
 function modelSource() {
+  if (S.libSel) {
+    const m = libModel();
+    return m ? (m.files.some((f) => f.path === S.shown) ? S.shown : libMain(m).path) : null;
+  }
   const tk = S.task;
   if (!tk) return null;
   const mine = S.shown && (S.shown.startsWith(`out/${tk.slug}/`) || S.shown.startsWith(`runs/studio/${tk.id}/`));
@@ -322,11 +362,12 @@ async function downloadAs(fmt) {
   const src = modelSource();
   if (!src) return;
   const same = src.split('.').pop().toLowerCase() === fmt;
+  const slug = S.task?.slug || S.libSel;
   if (!same) toast(t('dl.preparing', { fmt: fmt.toUpperCase() }));
   try {
-    const r = await fetch(`/api/export?path=${encodeURIComponent(src)}&fmt=${fmt}&name=${encodeURIComponent(S.task.slug)}`);
+    const r = await fetch(`/api/export?path=${encodeURIComponent(src)}&fmt=${fmt}&name=${encodeURIComponent(slug)}`);
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw Object.assign(new Error(e.error || r.statusText), e); }
-    const name = decodeURIComponent((/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || `${S.task.slug}.${fmt}`);
+    const name = decodeURIComponent((/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || `${slug}.${fmt}`);
     const url = URL.createObjectURL(await r.blob());
     const a = el('a', { href: url, download: name });
     document.body.append(a); a.click(); a.remove();
@@ -342,10 +383,10 @@ function renderModelBar() {
   const bar = $('#model-bar');
   const tk = S.task;
   const src = modelSource();
-  bar.hidden = !tk || !S.shown || !src;
+  bar.hidden = (!tk && !S.libSel) || !S.shown || !src;
   if (bar.hidden) { modelBarKey = ''; return; }
-  const done = tk.state === 'done';
-  const key = JSON.stringify([tk.id, done, !!tk.running, src, getLang()]);
+  const done = tk?.state === 'done';
+  const key = JSON.stringify([tk?.id, S.libSel, done, !!tk?.running, src, getLang()]);
   if (key === modelBarKey) return;
   modelBarKey = key;
   const dlBtn = el('button', { class: 'btn', onclick: (e) => {
@@ -357,12 +398,13 @@ function renderModelBar() {
     const off = (ev) => { if (!pop.contains(ev.target)) { pop.remove(); document.removeEventListener('pointerdown', off, true); } };
     setTimeout(() => document.addEventListener('pointerdown', off, true), 0);
   } }, '↓ ' + t('bar.download'));
-  bar.replaceChildren(
+  bar.replaceChildren(...[
     el('div', { class: 'bar-dl' }, dlBtn),
     host?.openPath && el('button', { class: 'btn', onclick: () => reveal(src.slice(0, src.lastIndexOf('/'))) }, t('bar.folder')),
-    done
+    tk && (done
       ? el('button', { class: 'btn', onclick: () => patch({ state: 'open' }) }, '↩ ' + t('task.reopen'))
-      : el('button', { class: 'btn primary', disabled: !!tk.running, title: t('task.done.hint'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('bar.done')));
+      : el('button', { class: 'btn primary', disabled: !!tk.running, title: t('task.done.hint'), onclick: () => patch({ state: 'done' }) }, '✓ ' + t('bar.done'))),
+  ].filter(Boolean));
 }
 
 // Короткое имя модели для строки «Как строится».
@@ -402,16 +444,21 @@ async function deleteTask(tk) {
   } catch (e) { toast(errText(e), true); }
 }
 
+// Главный файл готовой модели: свой GLB, иначе первый (сырой генератор — в gen_).
+function libMain(m) { return m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0]; }
+function libModel() { return S.library.find((m) => m.name === S.libSel) || null; }
+// Задача, из которой вышла готовая модель: у них одна папка.
+function libTask() { return (S.libSel && S.tasks.find((x) => x.slug === S.libSel)) || null; }
+function curRefs() { return (S.task || libTask())?.refs || []; }
+
 function renderLibrary() {
   const box = $('#library');
   box.replaceChildren(...(S.library.length ? S.library.map((m) => {
-    const main = m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0];
-    const active = m.files.some((f) => f.path === S.shown);
     return el('div', { class: 'item-wrap' },
       el('button', {
-        class: 'item' + (active ? ' sel' : ''),
+        class: 'item' + (S.libSel === m.name ? ' sel' : ''),
         title: m.files.map((f) => f.path).join('\n'),
-        onclick: () => showModel(main.path, { manual: true }),
+        onclick: () => selectLibrary(m.name),
       },
       el('div', { class: 'thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '' }),
       el('div', { class: 'body' },
@@ -426,7 +473,8 @@ async function trashLibraryModel(m, after = () => {}) {
   if (!confirm(t('lib.trash.confirm', { name: m.name }))) return;
   try {
     await api(`/library/${encodeURIComponent(m.name)}/trash`, { method: 'POST' });
-    if (S.shown && S.shown.startsWith(`out/${m.name}/`)) clearViewer();
+    if (S.libSel === m.name) await selectTask(null);
+    else if (S.shown && S.shown.startsWith(`out/${m.name}/`)) clearViewer();
     toast(t('lib.trashed', { name: m.name }));
     await refreshLibrary();
     after();
@@ -1047,7 +1095,8 @@ async function patch(body) {
 }
 
 function renderPanel() {
-  if (S.sel && S.task) renderTaskPanel();
+  if (S.libSel) renderLibPanel();
+  else if (S.sel && S.task) renderTaskPanel();
   else renderNewForm();
 }
 
@@ -1077,8 +1126,10 @@ function renderDock() { tools.renderHistory(); renderModelBar(); }
 function renderOutputs() { tools.renderHistory(); renderModelBar(); }
 
 // ── выбор и опрос ─────────────────────────────────────────────────────────
-async function selectTask(id) {
-  S.sel = id;
+// Выбор в левой колонке один: задача или готовая модель (владелец 28.09).
+function dropSelection() {
+  S.sel = null;
+  S.libSel = null;
   S.task = null;
   S.events = [];
   S.eventsTotal = 0;
@@ -1090,7 +1141,13 @@ async function selectTask(id) {
   S.shownVersion = null;
   pins.clear();
   togglePinMode(false);
+}
+
+async function selectTask(id) {
+  dropSelection();
+  S.sel = id;
   renderTasks();
+  renderLibrary();
   if (!id) {
     tools.toggle('ref', false);
     clearViewer();
@@ -1100,6 +1157,21 @@ async function selectTask(id) {
     return;
   }
   await refreshTask(true);
+}
+
+async function selectLibrary(name, rel = null) {
+  const m = S.library.find((x) => x.name === name);
+  if (!m) return;
+  dropSelection();
+  S.libSel = name;
+  S.autoFollow = false;
+  renderTasks();
+  renderLibrary();
+  if (!curRefs().length) tools.toggle('ref', false);
+  renderLibPanel();
+  renderProcess();
+  await showModel(rel || libMain(m).path);
+  renderDock();          // модель могла уже быть в окне — строку под ней всё равно обновить
 }
 
 let lastPanelKey = '';
@@ -1146,11 +1218,14 @@ async function refreshTask(first = false) {
 async function refreshTasks() {
   S.tasks = await api('/tasks');
   renderTasks();
+  syncLibPanel();
 }
 
 async function refreshLibrary() {
   S.library = await api('/library');
   renderLibrary();
+  if (S.libSel && !libModel()) await selectTask(null);   // модель убрали из папки
+  else syncLibPanel();
 }
 
 $('#new-task').addEventListener('click', () => selectTask(null));
@@ -1164,13 +1239,12 @@ function openLibrary() {
   back.addEventListener('click', (e) => { if (e.target === back) close(); });
   const root = H.health?.workspace?.path || '';
   const draw = () => {
-    const mainFile = (m) => m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0];
-    const cards = S.library.map((m) => el('div', { class: 'lib-card' + (m.files.some((f) => f.path === S.shown) ? ' on' : '') },
-      el('div', { class: 'lib-thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '', onclick: () => { showModel(mainFile(m).path, { manual: true }); close(); } }),
+    const cards = S.library.map((m) => el('div', { class: 'lib-card' + (S.libSel === m.name ? ' on' : '') },
+      el('div', { class: 'lib-thumb', style: m.preview ? `background-image:url("${fileUrl(m.preview)}")` : '', onclick: () => { selectLibrary(m.name); close(); } }),
       el('div', { class: 'lib-name' }, m.name),
       el('div', { class: 'muted' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')),
       el('div', { class: 'lib-actions' },
-        el('button', { class: 'btn primary', onclick: () => { showModel(mainFile(m).path, { manual: true }); close(); } }, t('lib.open')),
+        el('button', { class: 'btn primary', onclick: () => { selectLibrary(m.name); close(); } }, t('lib.open')),
         host?.openPath && el('button', { class: 'btn ghost', onclick: () => reveal(`out/${m.name}`) }, t('lib.reveal')),
         el('button', { class: 'btn ghost danger', onclick: () => trashLibraryModel(m, draw) }, t('lib.trash')))));
     back.replaceChildren(el('div', { class: 'sheet wide' },
@@ -1307,7 +1381,7 @@ const menuBar = new MenuBar($('#menubar'), [
     { label: () => t('view.fit.hint'), hint: 'Home', disabled: () => !viewer.root, action: () => viewer.fit() },
     { label: () => t('view.pin'), hint: 'M', checked: () => pins.mode, action: () => togglePinMode() },
     '-',
-    { label: () => t('rail.ref'), hint: 'R', checked: () => tools.state.ref, disabled: () => !S.task?.refs?.length, action: () => tools.toggle('ref') },
+    { label: () => t('rail.ref'), hint: 'R', checked: () => tools.state.ref, disabled: () => !curRefs().length, action: () => tools.toggle('ref') },
     { label: () => t('rail.parts'), hint: 'P', checked: () => tools.state.parts, action: () => tools.toggle('parts') },
     { label: () => t('hist.hint'), checked: () => tools.state.history, action: () => tools.toggle('history') },
     { label: () => t('rail.grid'), hint: 'G', checked: () => tools.state.grid, action: () => tools.toggle('grid') },
@@ -1390,7 +1464,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === '4') setViewMode('normals');
   else if (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'а') toggleFlat();
   else if (e.key.toLowerCase() === 'm' || e.key.toLowerCase() === 'ь') togglePinMode();
-  else if ((e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') && S.task?.refs?.length) tools.toggle('ref');
+  else if ((e.key.toLowerCase() === 'r' || e.key.toLowerCase() === 'к') && curRefs().length) tools.toggle('ref');
   else if (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'з') tools.toggle('parts');
   else if (e.key.toLowerCase() === 'g' || e.key.toLowerCase() === 'п') tools.toggle('grid');
   else if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'р') tools.toggle('human');
@@ -1415,7 +1489,9 @@ async function boot() {
   else if (blockers().length) openSettings();
   // Ссылка вида #model=out/<папка>/<файл>.glb открывает модель сразу.
   const deep = new URLSearchParams(location.hash.slice(1)).get('model');
-  if (deep) showModel(deep, { manual: true });
+  const deepLib = deep && S.library.find((m) => m.files.some((f) => f.path === deep));
+  if (deepLib) await selectLibrary(deepLib.name, deep);
+  else if (deep) showModel(deep, { manual: true });
 
   refreshAccount();
   setInterval(refreshAccount, 60000);

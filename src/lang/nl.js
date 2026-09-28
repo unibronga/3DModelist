@@ -506,6 +506,8 @@ export default {
   "dl.obj.hint": "universeel, zip met kleuren (.mtl)",
   "done.refs": "Referenties",
   "done.hint": "Het model is klaar. Iets aanpassen? Kies „Heropenen” onder het model.",
+  "lib.task": "Taak",
+  "lib.hint": "De modelbestanden staan in de map {path}.",
   "err.exportFail": "Opslaan in dit formaat lukte niet: {msg}",
   "who.critic": "Keurder",
   "who.helper": "Helper",

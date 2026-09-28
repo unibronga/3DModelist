@@ -505,6 +505,8 @@ export default {
   "dl.obj.hint": "universal, zip with colors (.mtl)",
   "done.refs": "References",
   "done.hint": "The model is done. To change something, press “Reopen” under the model.",
+  "lib.task": "Task",
+  "lib.hint": "The model files are in the {path} folder.",
   "err.exportFail": "Couldn't save in this format: {msg}",
   "who.critic": "Reviewer",
   "who.helper": "Helper",

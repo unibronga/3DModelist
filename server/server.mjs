@@ -298,7 +298,7 @@ async function api(req, res, url) {
     const id = parts[2];
     if (!id && m === 'GET') {
       return send(res, 200, listTasks().map((t) => ({
-        id: t.id, name: t.name, slug: t.slug, route: t.route, state: t.state,
+        id: t.id, name: t.name, slug: t.slug, route: t.route, state: t.state, refs: t.refs || [],
         agent_state: busyTask() === t.id || starting === t.id ? 'running' : t.agent_state,
         agent_model: t.agent?.model,
         created_at: t.created_at, spent_usd: t.spent_usd || 0, gen_state: t.gen?.state || null,

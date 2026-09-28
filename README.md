@@ -59,6 +59,9 @@ reference from four angles, and export to `.blend` + GLB.
 - **Under the model**: Download (GLB, FBX or OBJ — the studio converts with
   Blender when needed), Show folder, and **Model is done** / **Reopen**. A done
   task keeps only its references and download buttons on the right.
+- **One selection on the left** — a task or a finished model, and the right
+  side always shows that one. A finished model shows the task it came from,
+  its references and download buttons.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how
   hard it thinks, and an optional reviewer (any of them, Haiku included) that

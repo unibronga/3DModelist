@@ -505,6 +505,8 @@ export default {
   "dl.obj.hint": "universal, zip con colores (.mtl)",
   "done.refs": "Referencias",
   "done.hint": "El modelo está terminado. Para cambiar algo: «Reabrir» debajo del modelo.",
+  "lib.task": "Tarea",
+  "lib.hint": "Los archivos del modelo están en la carpeta {path}.",
   "err.exportFail": "No se pudo guardar en este formato: {msg}",
   "who.critic": "Revisor",
   "who.helper": "Ayudante",

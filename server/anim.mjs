@@ -14,6 +14,7 @@ import { ws } from './store.mjs';
 import { library } from './library.mjs';
 import { load, exists } from './settings.mjs';
 import { UserError } from './errors.mjs';
+import { runAnimAgent } from './agent.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const py = (name) => fs.readFileSync(path.join(HERE, 'py', name), 'utf8');
@@ -190,6 +191,7 @@ export function saveClip(name, id, clip) {
     id, name: clip.name.slice(0, 60), pack: String(clip.pack || '').slice(0, 40), fps: clip.fps, frames: clip.frames,
     loop: !!clip.loop, created: Number(clip.created) || Date.now(), keys: clip.keys,
   };
+  if (clip.undo && typeof clip.undo === 'object' && typeof clip.undo.keys === 'object') out.undo = clip.undo;
   writeJson(path.join(dirOf(name), 'clips', id + '.json'), out);
   return out;
 }
@@ -266,4 +268,179 @@ function renameInGlb(file, from, to) {
   rest.copy(out, 20 + text.length);
   fs.writeFileSync(file + '.tmp', out);
   fs.renameSync(file + '.tmp', file);
+}
+
+// ── движение по словам: агент ставит ключи ──────────────────────────────────
+// Страница присылает скелет «по-человечески» (кости, где начинаются и
+// кончаются, пол), покой каждой кости (кватернионы — чтобы перевести ответ в
+// ключи) и нынешнее движение в том же виде, что ждёт от агента. Агент
+// отвечает поворотами в градусах относительно родителя в осях модели; здесь
+// они становятся ключами клипа (local = pw⁻¹ · D · w), прежние ключи — в
+// clip.undo, чтобы «Вернуть как было».
+
+const jobs = new Map();          // id → { name, clip, state, reply, error, cost, t0, proc }
+const agentBusy = (name) => [...jobs.values()].some((j) => j.name === name && j.state === 'running');
+
+// Кватернионы [x, y, z, w].
+const qmul = (a, b) => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+const qinv = (a) => [-a[0], -a[1], -a[2], a[3]];
+const qaxis = (i, deg) => { const h = (deg * Math.PI) / 360; const q = [0, 0, 0, Math.cos(h)]; q[i] = Math.sin(h); return q; };
+// Поворот по осям модели: сперва X, затем Y, затем Z (как Euler 'ZYX' у three.js).
+const fromDeg = ([x, y, z]) => qmul(qaxis(2, z), qmul(qaxis(1, y), qaxis(0, x)));
+const qrot = (q, v) => qmul(qmul(q, [...v, 0]), qinv(q)).slice(0, 3);
+
+const chatFile = (name, clipId) => path.join(dirOf(name), 'chat', clipId + '.json');
+export function chatLog(name, clipId) {
+  model(name);
+  if (!okId(clipId)) throw new UserError('animBadClip');
+  return readJson(chatFile(name, clipId), []);
+}
+function chatAdd(name, clipId, row) {
+  const log = readJson(chatFile(name, clipId), []);
+  log.push({ t: Date.now(), ...row });
+  writeJson(chatFile(name, clipId), log.slice(-60));
+}
+
+function agentPrompt(ctx, clip, message, history) {
+  const f3 = (v) => v.map((x) => +Number(x).toFixed(3));
+  const bones = ctx.bones.map((b) => `- ${b.name}${b.parent ? ` (родитель ${b.parent})` : ' (корень)'} — «${b.label}», от ${JSON.stringify(f3(b.head))} до ${JSON.stringify(f3(b.tail))}`).join('\n');
+  const now = ctx.motion?.keys?.length ? JSON.stringify(ctx.motion) : 'ключей пока нет — поза покоя';
+  const past = history.filter((h) => h.role === 'user').slice(-6).map((h) => `- «${h.text}»`).join('\n');
+  return `Ты — аниматор персонажа в программе 3DModelist. Сделай движение по просьбе человека на готовом скелете. Инструменты не вызывай: ответь текстом и одним блоком \`\`\`json.
+
+Оси модели: X — влево от персонажа (+X — его левая сторона), Y — вверх, Z — вперёд (персонаж смотрит на +Z). Единицы — метры. Пол — y = ${Number(ctx.floor || 0).toFixed(3)}.
+
+Скелет (кость, родитель, откуда и куда идёт в покое):
+${bones}
+
+Поворот кости r = [rx, ry, rz] — градусы, от позы покоя, относительно родителя (ребёнок движется вместе с родителем, его r — добавка), по осям модели: сперва X, затем Y, затем Z. [0, 0, 0] — поза покоя, как модель стоит сейчас. Правило правой руки:
+- rx > 0: кость, что смотрит вверх, наклоняется вперёд; что смотрит вниз — уходит назад. Шаг вперёд бедром — rx < 0; согнуть колено (голень назад) — rx > 0; наклон корпуса вперёд — rx > 0; рука, висящая вниз, вперёд — rx < 0.
+- ry > 0: поворот вокруг вертикали влево (перед уходит к +X). Голову или корпус влево — ry > 0.
+- rz > 0: конец кости уходит к +X. Левую руку (висит вниз-влево) поднять в сторону — rz > 0; правую — rz < 0.
+Сдвиг p = [dx, dy, dz] — метры по осям модели, только у корневой кости: подпрыгнуть — dy > 0, присесть — dy < 0.
+
+Ответ — JSON такого вида:
+{"frames": 24, "fps": 30, "loop": true,
+ "keys": [{"f": 0, "e": "smooth", "bones": {"Bone1": {"r": [0, 0, 0], "p": [0, 0, 0]}, "Bone2": {"r": [5, 0, 0]}}}]}
+- f — кадр от 0 до frames; e — переход к следующему ключу: smooth (плавно), linear (ровно), step (скачком).
+- В каждом ключе перечисляй все кости, что участвуют в движении, — иначе кость потянется к ключу из другого кадра. Кость, которой нет ни в одном ключе, стоит в покое.
+- loop: true — по кругу (бег, ходьба, стойка): программа сама замкнёт круг от последнего ключа к первому.
+- Длина по умолчанию — как у нынешнего движения (${clip.frames} кадров, ${clip.fps} к/с); меняй, если просят или так нужно.
+- Движение живое: противоход рук и ног при шаге и беге, перенос веса, лёгкая работа корпуса и головы; ступни не проходят сквозь пол.
+- Правка («сделай плавнее», «поправь руку») — меняй только то, о чём просят, остальное оставь как есть, и верни движение целиком.
+
+Нынешнее движение «${clip.name}» (${clip.frames} кадров, ${clip.fps} к/с, по кругу: ${clip.loop ? 'да' : 'нет'}):
+${now}
+${past ? `\nРаньше по этому движению просили:\n${past}\n` : ''}
+Просьба человека: «${message}»
+
+Перед блоком json в одной-двух фразах, на языке просьбы, скажи, что сделал.`;
+}
+
+// Ответ агента → чистое движение: только известные кости, числа, кадры в пределах.
+function parseMotion(reply, ctx, clip) {
+  const m = [...String(reply || '').matchAll(/```(?:json)?\s*([\s\S]*?)```/g)].pop();
+  let j;
+  try { j = JSON.parse(m ? m[1] : reply); } catch { return null; }
+  if (!j || !Array.isArray(j.keys)) return null;
+  const names = new Set(ctx.bones.map((b) => b.name));
+  const roots = new Set(ctx.bones.filter((b) => !b.parent).map((b) => b.name));
+  const frames = Number.isInteger(j.frames) && j.frames >= 2 && j.frames <= 2000 ? j.frames : clip.frames;
+  const num3 = (v) => Array.isArray(v) && v.length === 3 && v.every((x) => Number.isFinite(Number(x))) ? v.map(Number) : null;
+  const keys = [];
+  for (const k of j.keys) {
+    const f = Math.round(Number(k?.f));
+    if (!Number.isFinite(f) || f < 0 || f > frames || typeof k.bones !== 'object') continue;
+    const bones = {};
+    for (const [b, v] of Object.entries(k.bones)) {
+      if (!names.has(b)) continue;
+      const r = num3(v?.r) || [0, 0, 0];
+      const pp = roots.has(b) ? num3(v?.p) : null;
+      bones[b] = pp ? { r, p: pp } : { r };
+    }
+    if (Object.keys(bones).length) keys.push({ f, e: ['smooth', 'linear', 'step'].includes(k.e) ? k.e : 'smooth', bones });
+  }
+  if (!keys.length) return null;
+  return { frames, fps: [24, 30, 60].includes(j.fps) ? j.fps : clip.fps, loop: typeof j.loop === 'boolean' ? j.loop : clip.loop, keys };
+}
+
+// Движение агента → ключи клипа: local = pw⁻¹ · D · w; сдвиг корня — в осях родителя.
+function motionToKeys(motion, ctx) {
+  const keys = {};
+  for (const k of [...motion.keys].sort((a, b) => a.f - b.f)) {
+    for (const [b, v] of Object.entries(k.bones)) {
+      const rest = ctx.rest[b];
+      if (!rest) continue;
+      const q = qmul(qmul(qinv(rest.pw), fromDeg(v.r)), rest.w).map((x) => +x.toFixed(6));
+      const key = { f: k.f, q, e: k.e };
+      if (v.p) key.p = rest.p0.map((x, i) => +(x + qrot(qinv(rest.pw), v.p)[i]).toFixed(6));
+      const list = (keys[b] ||= []);
+      const old = list.findIndex((x) => x.f === k.f);
+      if (old >= 0) list[old] = key; else list.push(key);
+    }
+  }
+  return keys;
+}
+
+export function agentStart(name, body = {}) {
+  model(name);
+  const d = dirOf(name);
+  const clipId = String(body.clip || '');
+  const clip = okId(clipId) ? readJson(path.join(d, 'clips', clipId + '.json')) : null;
+  const message = String(body.message || '').trim().slice(0, 2000);
+  const ctx = body.context;
+  if (!clip || !message || !ctx || !Array.isArray(ctx.bones) || typeof ctx.rest !== 'object') throw new UserError('animBadClip');
+  if (agentBusy(name)) throw new UserError('animAgentBusy');
+  const history = readJson(chatFile(name, clipId), []);
+  chatAdd(name, clipId, { role: 'user', text: message });
+  const id = 'a' + Date.now().toString(36);
+  const job = { id, name, clip: clipId, state: 'running', t0: Date.now() };
+  jobs.set(id, job);
+  runAnimAgent({
+    prompt: agentPrompt(ctx, clip, message, history),
+    model: /^[\w.:-]{1,80}$/.test(body.model || '') ? body.model : 'opus',
+    onSpawn: (p) => { job.proc = p; },
+  }).then((r) => {
+    job.proc = null;
+    // По подписке денег не списывается — сумма из claude только оценка, не показываем.
+    job.cost = load().claude.mode === 'api' ? r.cost : undefined;
+    const motion = r.ok ? parseMotion(r.reply, ctx, clip) : null;
+    if (!motion) {
+      job.state = 'error';
+      job.error = r.ok ? { code: 'animAgentJson' } : { code: r.code || 'animAgentFail', params: r.params || { msg: String(r.error || '').slice(0, 300) } };
+      chatAdd(name, clipId, { role: 'error', code: job.error.code, params: job.error.params, text: r.ok ? String(r.reply || '').slice(0, 600) : '' });
+      return;
+    }
+    const cur = readJson(path.join(d, 'clips', clipId + '.json')) || clip;
+    cur.undo = { keys: cur.keys, frames: cur.frames, fps: cur.fps, loop: cur.loop };
+    Object.assign(cur, { frames: motion.frames, fps: motion.fps, loop: motion.loop, keys: motionToKeys(motion, ctx) });
+    writeJson(path.join(d, 'clips', clipId + '.json'), cur);
+    job.reply = String(r.reply || '').split('```')[0].trim().slice(0, 800);
+    job.state = 'done';
+    chatAdd(name, clipId, { role: 'agent', text: job.reply, cost: job.cost });
+  });
+  return { job: id };
+}
+
+export function agentJob(name, id) {
+  const j = jobs.get(id);
+  if (!j || j.name !== name) throw new UserError('animBadClip');
+  return { id: j.id, clip: j.clip, state: j.state, reply: j.reply, error: j.error, cost: j.cost, t0: j.t0 };
+}
+
+// Что сейчас делает агент по этой модели (страницу могли закрыть и открыть).
+export function agentRunning(name) {
+  return [...jobs.values()].filter((j) => j.name === name && j.state === 'running').map((j) => agentJob(name, j.id));
+}
+
+export function agentStop(name, id) {
+  const j = jobs.get(id);
+  if (!j || j.name !== name) throw new UserError('animBadClip');
+  if (j.proc) { try { process.kill(-j.proc.pid, 'SIGTERM'); } catch { /* уже вышел */ } }
+  return agentJob(name, id);
 }

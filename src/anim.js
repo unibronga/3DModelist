@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { el, api, fileUrl, toast, errText } from './ui.js';
+import { el, api, fileUrl, toast, errText, money } from './ui.js';
 import { t, has } from './i18n.js';
 import { HUMAN_POINTS, HUMAN_BONES, MIRRORED, buildHuman, centerX, mirror, pairOf, pairBone, sideOf } from './anim-rig.js';
 import { newClip, sample, setKey, deleteKey, moveKey, keyAt, keyFrames, bake } from './anim-clip.js';
@@ -71,8 +71,9 @@ export function rotateWorld(bone, axis, angle) {
 
 export class Animator {
   // stageEl — поле с окном модели (там подсказка поверх окна и полоса времени).
-  constructor(viewer, stageEl, { onLoad = () => {}, onChange = () => {} } = {}) {
+  constructor(viewer, stageEl, { onLoad = () => {}, onChange = () => {}, modelPicker = null } = {}) {
     this.viewer = viewer;
+    this.modelPicker = modelPicker;  // выбор модели Claude для «Задачи агенту»
     this.onLoad = onLoad;          // в окне другая модель (путь в рабочей папке)
     this.onChange = onChange;      // перерисовать правую панель
     this.name = null;
@@ -144,6 +145,14 @@ export class Animator {
       onRename: (from, to) => this.renameAny(from, to),
     });
     viewer.host.after(this.tl.root);            // под окном модели, окно становится ниже
+
+    // Задача агенту: чат на месте полосы времени.
+    this.agentOpen = false;
+    this.agentJob = null;                       // { id, clip, t0 } — агент работает
+    this.agentLog = [];
+    try { this.agentModel = localStorage.getItem('modelist.anim.model') || 'opus'; } catch { this.agentModel = 'opus'; }
+    this.agentCard = el('div', { class: 'timeline agent-card', hidden: true });
+    this.tl.root.after(this.agentCard);
     document.addEventListener('keydown', (e) => this.key(e));
 
     // Слушаем раньше OrbitControls (фаза захвата на окне): тянем сустав или
@@ -184,12 +193,18 @@ export class Animator {
       this.packs = st.packs || [];
       this.fromRig();
       await this.show();
+      const run = (await this.api('/agent').catch(() => []))[0];
+      if (run && this.name === name) { this.agentJob = { id: run.id, clip: run.clip, t0: run.t0 }; this.pollAgent(); }
     } catch (e) { toast(errText(e), true); }
     this.onChange();
   }
 
   close() {
     if (!this.name) return;
+    clearTimeout(this.agentTimer);
+    this.agentJob = null;                 // агент доработает сам; откроют вкладку — подхватим
+    this.agentOpen = false;
+    this.agentCard.hidden = true;
     this.flushClip();
     this.closeClip(false);
     this.name = null;
@@ -580,6 +595,7 @@ export class Animator {
       b.userData.rest = b.quaternion.clone();
       b.userData.restP = b.position.clone();
       b.userData.restW = b.getWorldQuaternion(new THREE.Quaternion());
+      b.userData.pw = b.parent.getWorldQuaternion(new THREE.Quaternion());   // родитель в покое
       b.userData.restWP = b.getWorldPosition(new THREE.Vector3());
       b.userData.depth = 0;
       for (let o = b.parent; o?.isBone; o = o.parent) b.userData.depth++;
@@ -900,10 +916,13 @@ export class Animator {
     this.bend = 0;
     this.selectBone(this.sel);          // подкраску убрать, кольца — на выбранную кость
     this.setFrame(0);
+    if (this.agentOpen) this.openAgent();
     this.onChange();
   }
 
   closeClip(redraw = true) {
+    this.agentOpen = false;
+    this.agentCard.hidden = true;
     this.flushClip();
     this.pause();
     this.clip = null;
@@ -1086,7 +1105,8 @@ export class Animator {
   }
 
   renderTl() {
-    if (!this.clip || this.stage !== 'bound') { this.tl.hide(); this.renderPoseRail(); return; }
+    if (!this.clip || this.stage !== 'bound') { this.tl.hide(); this.agentCard.hidden = true; this.renderPoseRail(); return; }
+    if (this.agentOpen) { this.tl.hide(); this.agentCard.hidden = false; this.renderPoseRail(); return; }
     // Все кости по дереву: у каждой своя строка, щелчок по имени — выбрать.
     const rows = this.boneTree().map((b) => ({ bone: b.name, label: boneLabel(b.name), depth: b.depth }));
     const k = this.selKeys()[0];
@@ -1161,6 +1181,175 @@ export class Animator {
     if (this.keySel?.bone === from) this.keySel.bone = to;
     this.draw();
     this.renderTl();
+    this.onChange();
+  }
+
+  // ── движение по словам: задача агенту ─────────────────────────────────
+  // Агенту — скелет «по-человечески» (кости, откуда и куда идут, пол),
+  // покой каждой кости (чтобы сервер перевёл ответ в ключи) и нынешнее
+  // движение в том же виде, что он вернёт: повороты от покоя относительно
+  // родителя в осях модели, градусы (X → Y → Z), сдвиг корня в метрах.
+  agentContext() {
+    const rig = this.st.rig;
+    const bones = this.boneTree().map((b) => {
+      const def = rig.bones.find((x) => x.name === b.name);
+      return { name: b.name, parent: b.parent, label: boneLabel(b.name), head: rig.joints[def?.head], tail: rig.joints[def?.tail] };
+    }).filter((b) => b.head && b.tail);
+    const rest = {};
+    for (const b of this.bones) rest[b.name] = { pw: b.userData.pw.toArray(), w: b.userData.restW.toArray(), p0: b.userData.restP.toArray() };
+    const c = this.clip;
+    const keys = keyFrames(c).map((f) => {
+      const out = {};
+      let e = 'smooth';
+      for (const b of this.bones) {
+        const k = keyAt(c, b.name, f);
+        if (!k) continue;
+        e = k.e || e;
+        const D = b.userData.pw.clone().multiply(new THREE.Quaternion().fromArray(k.q)).multiply(b.userData.restW.clone().invert());
+        const eu = new THREE.Euler().setFromQuaternion(D, 'ZYX');
+        const v = { r: [eu.x, eu.y, eu.z].map((a) => +THREE.MathUtils.radToDeg(a).toFixed(1)) };
+        if (k.p && !b.parent?.isBone) v.p = new THREE.Vector3().fromArray(k.p).sub(b.userData.restP).applyQuaternion(b.userData.pw).toArray().map((x) => +x.toFixed(3));
+        out[b.name] = v;
+      }
+      return { f, e, bones: out };
+    });
+    return { bones, rest, floor: this.localBox().min[1], motion: { frames: c.frames, fps: c.fps, loop: c.loop, keys } };
+  }
+
+  async openAgent() {
+    if (!this.clip) return;
+    this.pause();
+    this.agentOpen = true;
+    const id = this.clip.id;
+    this.agentLog = [];
+    this.renderTl();
+    this.renderAgent();
+    this.onChange();
+    const log = await this.api(`/chat/${id}`).catch(() => []);
+    if (this.clip?.id === id) { this.agentLog = log; this.renderAgent(); }
+  }
+
+  closeAgent() {
+    this.agentOpen = false;
+    this.agentCard.hidden = true;
+    this.renderTl();
+    this.onChange();
+  }
+
+  renderAgent() {
+    const card = this.agentCard;
+    const show = this.agentOpen && !!this.clip && this.stage === 'bound';
+    card.hidden = !show;
+    if (!show) return;
+    card.style.height = this.tl.root.style.height;
+    const job = this.agentJob && this.agentJob.clip === this.clip.id ? this.agentJob : null;
+    const draft = card.querySelector('textarea')?.value || '';
+    const send = () => this.sendAgent(ta.value);
+    const ta = el('textarea', {
+      class: 'textarea agent-input', placeholder: t('agent.ph'), disabled: !!job,
+      onkeydown: (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } },
+    });
+    ta.value = draft;
+    const msg = (m) => el('div', { class: 'agent-msg ' + m.role },
+      m.role === 'error' ? errText({ code: m.code, params: m.params, error: m.text }) : m.text,
+      m.cost ? el('span', { class: 'agent-cost' }, money(m.cost)) : null);
+    const log = el('div', { class: 'agent-log' },
+      ...(this.agentLog.length ? this.agentLog.map(msg) : [el('div', { class: 'muted agent-empty' }, t('agent.empty'))]),
+      job && el('div', { class: 'agent-msg working' },
+        el('span', { class: 'typing agent-time' }, t('agent.working', { time: '0:00' })),
+        el('button', { class: 'link-btn', title: t('tip.agentStop'), onclick: () => this.api(`/agent/${job.id}/stop`, { method: 'POST' }).catch(() => {}) }, t('chat.stop'))));
+    card.replaceChildren(
+      el('div', { class: 'agent-head' },
+        el('span', { class: 'agent-title' }, '✦ ' + t('agent.title', { name: this.clip.name })),
+        el('span', { class: 'tl-sp' }),
+        this.modelPicker && this.modelPicker(this.agentModel, (v) => {
+          this.agentModel = v;
+          try { localStorage.setItem('modelist.anim.model', v); } catch { /* приватный режим */ }
+          this.renderAgent();
+        }),
+        el('button', { class: 'btn tl-btn', title: t('tip.agentBack'), onclick: () => this.closeAgent() }, '↩ ' + t('agent.back'))),
+      log,
+      el('div', { class: 'agent-foot' }, ta,
+        el('button', { class: 'btn primary', disabled: !!job, title: t('tip.agentSend'), onclick: send }, t('chat.send'))));
+    log.scrollTop = log.scrollHeight;
+    this.tickAgent();
+    if (!job) ta.focus();
+  }
+
+  // Часы в строке «Агент делает движение…» — без перерисовки чата.
+  tickAgent() {
+    const label = this.agentCard.querySelector('.agent-time');
+    if (!label || !this.agentJob) return;
+    const s = Math.max(0, Math.round((Date.now() - this.agentJob.t0) / 1000));
+    label.textContent = t('agent.working', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` });
+  }
+
+  async sendAgent(text) {
+    text = String(text || '').trim();
+    if (!text || !this.clip || this.agentJob) return;
+    await this.flushClip();
+    const clip = this.clip;
+    try {
+      const { job } = await this.api('/agent', { method: 'POST', body: { clip: clip.id, message: text, model: this.agentModel, context: this.agentContext() } });
+      this.agentLog.push({ role: 'user', text });
+      this.agentJob = { id: job, clip: clip.id, t0: Date.now() };
+      const ta = this.agentCard.querySelector('textarea');
+      if (ta) ta.value = '';
+      this.renderAgent();
+      this.pollAgent();
+    } catch (e) { toast(errText(e), true); }
+  }
+
+  pollAgent() {
+    clearTimeout(this.agentTimer);
+    const job = this.agentJob;
+    if (!job || !this.name) return;
+    this.agentTimer = setTimeout(async () => {
+      this.tickAgent();
+      const st = await this.api(`/agent/${job.id}`).catch(() => null);
+      if (this.agentJob !== job) return;
+      if (!st || st.state === 'running') { this.pollAgent(); return; }
+      this.agentJob = null;
+      await this.agentDone(job.clip, st);
+    }, 1000);
+  }
+
+  // Агент закончил: ключи уже в файле движения — забрать и показать на полосе.
+  async agentDone(clipId, st) {
+    const log = await this.api(`/chat/${clipId}`).catch(() => null);
+    if (log && this.clip?.id === clipId) this.agentLog = log;
+    if (st.state === 'done') {
+      const fresh = await this.api('').catch(() => null);
+      const c = fresh?.clips?.find((x) => x.id === clipId);
+      if (c) {
+        const i = this.clips.findIndex((x) => x.id === clipId);
+        if (i >= 0) this.clips[i] = c; else this.clips.push(c);
+        if (this.clip?.id === clipId) this.clip = c;
+      }
+      if (this.clip?.id === clipId) {
+        this.agentOpen = false;
+        this.agentCard.hidden = true;
+        this.keySel = null;
+        this.setFrame(0);
+        this.togglePlay();              // сразу показать, что вышло
+      }
+      toast(t('agent.done'));
+    } else if (this.clip?.id === clipId) {
+      this.renderAgent();
+    }
+    this.onChange();
+  }
+
+  // «Вернуть как было»: ключи движения до правки агента.
+  undoAgent() {
+    const c = this.clip;
+    if (!c?.undo) return;
+    this.pause();
+    Object.assign(c, { keys: c.undo.keys, frames: c.undo.frames, fps: c.undo.fps, loop: c.undo.loop });
+    delete c.undo;
+    this.saveClip(c, true);
+    this.keySel = null;
+    this.setFrame(0);
     this.onChange();
   }
 
@@ -1358,6 +1547,12 @@ export class Animator {
           el('input', { class: 'input', type: 'number', min: 2, max: 2000, value: c.frames, onchange: (e) => { const n = Math.round(Number(e.target.value)); if (n >= 2 && n <= 2000) this.updateClip({ frames: n }); } })),
         el('div', { class: 'seg' }, ...[24, 30, 60].map((f) => el('button', { class: c.fps === f ? 'on' : '', title: t('tip.fps', { n: f }), onclick: () => this.updateClip({ fps: f }) }, t('anim.fps', { n: f }))))),
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: c.loop, onchange: (e) => this.updateClip({ loop: e.target.checked }) }), t('anim.loop')),
+      // Движение по словам: чат с агентом на месте полосы времени.
+      el('button', {
+        class: 'btn accent wide agent-btn' + (this.agentOpen ? ' on' : ''), title: t('tip.agent'),
+        onclick: () => (this.agentOpen ? this.closeAgent() : this.openAgent()),
+      }, (this.agentJob?.clip === c.id ? '⏳ ' : '✦ ') + t(this.agentOpen ? 'agent.back' : 'anim.agent.btn')),
+      !!c.undo && el('button', { class: 'link-btn', title: t('tip.agentUndo'), onclick: () => this.undoAgent() }, t('agent.undo')),
       this.packs.length > 1 && el('select', { class: 'input', onchange: (e) => this.updateClip({ pack: e.target.value }) },
         ...this.packs.map((p) => el('option', { value: p.id, selected: p.id === c.pack }, t('anim.inPack', { name: p.name })))),
       el('div', { class: 'muted small' }, t(this.sel ? 'anim.pose.hint' : 'anim.pick.hint')),

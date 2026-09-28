@@ -347,3 +347,58 @@ export function testClaude(model = 'haiku') {
     });
   });
 }
+
+// Движение для вкладки «Анимации»: один ответ Claude без инструментов — текст
+// и блок JSON с ключами. Пустая временная папка: CLAUDE.md рабочей папки ему
+// не нужен. onSpawn(proc) — чтобы «Стоп» мог погасить процесс.
+export function runAnimAgent({ prompt, model = 'opus', effort = 'high', onSpawn = () => {} }) {
+  return new Promise((resolve) => {
+    let env;
+    let bin;
+    try { env = claudeEnv(); bin = claudeBin(); } catch (e) { resolve({ ok: false, error: e.message, code: e.code }); return; }
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'modelist-anim-'));
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', '2',
+      '--disallowedTools', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Artifact', 'ArtifactComments', 'ArtifactData'];
+    if (!/haiku/.test(model)) args.push('--effort', effort);
+    const p = spawn(bin, args, { cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    onSpawn(p);
+    p.stdin.end(prompt);
+    const out = { ok: false };
+    let buf = '';
+    let err = '';
+    const timer = setTimeout(() => { if (!out.error) { out.error = 'timeout'; out.code = 'animAgentTimeout'; } try { process.kill(-p.pid, 'SIGTERM'); } catch { /* вышел */ } }, 15 * 60000);
+    p.stdout.on('data', (c) => {
+      buf += c;
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl);
+        buf = buf.slice(nl + 1);
+        let m;
+        try { m = JSON.parse(line); } catch { continue; }
+        if (m.type === 'system' && m.subtype === 'api_retry' && (m.error_status === 401 || m.error_status === 403)) {
+          const a = authError(m.error_status);
+          out.error = a.code; out.code = a.code; out.params = a.params;
+          try { process.kill(-p.pid, 'SIGTERM'); } catch { /* вышел */ }
+        }
+        if (m.type === 'result') {
+          out.ok = !m.is_error;
+          out.reply = m.result;
+          out.cost = m.total_cost_usd;
+          if (m.is_error) out.error = m.result;
+        }
+      }
+    });
+    p.stderr.on('data', (c) => { err = (err + c).slice(-2000); });
+    p.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: e.message }); });
+    p.on('close', (code, signal) => {
+      clearTimeout(timer);
+      fs.rmSync(cwd, { recursive: true, force: true });
+      if (signal && !out.error) { out.error = 'stopped'; out.code = 'animAgentStopped'; }
+      if (!out.ok && !out.error) {
+        out.error = err.trim().split('\n').filter((l) => !/connectors are disabled/.test(l)).slice(-2).join(' ');
+        if (!out.error) out.code = 'claudeNoAnswer';
+      }
+      resolve(out);
+    });
+  });
+}

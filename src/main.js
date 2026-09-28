@@ -155,6 +155,13 @@ const animator = new Animator(viewer, $('#viewport').parentElement, {
     renderModelBar();
   },
   onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); },
+  // «Задача агенту»: тот же выбор модели Claude, что в задачах (Haiku тоже можно).
+  modelPicker: (value, onChange) => {
+    const sel = modelSelect(value, { critic: true, onChange });
+    sel.querySelector('option[value="off"]')?.remove();      // «без приёмщика» тут не к месту
+    sel.title = t('tip.agentModel');
+    return sel;
+  },
 });
 // Подсказки у всех кнопок — своя карточка, как в 3DPainter (src/tooltip.js).
 initTooltips();

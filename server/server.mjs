@@ -310,6 +310,12 @@ async function api(req, res, url) {
     if (parts[3] === 'packs' && m === 'PUT') return send(res, 200, anim.savePacks(name, await readBody(req)));
     if (parts[3] === 'export' && m === 'POST') return send(res, 200, anim.saveExport(name, await readBody(req)));
     if (parts[3] === 'rename' && m === 'POST') return send(res, 200, anim.renameBone(name, await readBody(req)));
+    // Движение по словам: агент ставит ключи (anim.mjs, agent.mjs).
+    if (parts[3] === 'agent' && !parts[4] && m === 'POST') return send(res, 200, anim.agentStart(name, await readBody(req)));
+    if (parts[3] === 'agent' && !parts[4] && m === 'GET') return send(res, 200, anim.agentRunning(name));
+    if (parts[3] === 'agent' && parts[4] && parts[5] === 'stop' && m === 'POST') return send(res, 200, anim.agentStop(name, parts[4]));
+    if (parts[3] === 'agent' && parts[4] && m === 'GET') return send(res, 200, anim.agentJob(name, parts[4]));
+    if (parts[3] === 'chat' && parts[4] && m === 'GET') return send(res, 200, anim.chatLog(name, parts[4]));
   }
 
   if (parts[1] === 'tasks') {

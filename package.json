@@ -1,7 +1,7 @@
 {
   "name": "3dmodelist",
   "productName": "3DModelist",
-  "version": "0.5.5",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "3DModelist — reference in, low-poly model out: Claude agent + Blender + image-to-3D generators",

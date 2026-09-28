@@ -81,7 +81,11 @@ reference from four angles, and export to `.blend` + GLB.
   frame; a timeline under the model (smooth / even / jump, mirror pose, copy
   and paste pose, loop). Export a pack or all motions as GLB (Godot, web), FBX
   (Unity, Unreal) or .blend. Bone names follow Unity Humanoid; looping motions
-  get a `-loop` suffix so Godot loops them. The model itself is untouched:
+  get a `-loop` suffix so Godot loops them. **Task for the agent**: a button on
+  a motion opens a chat in place of the timeline — write "make a looping run"
+  or "make the arm swing smoother", pick a Claude model, and the agent sets the
+  keys on your skeleton; "Undo" restores the keys from before its change.
+  The model itself is untouched:
   everything lives in `anim/<model>/` in the workspace.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how

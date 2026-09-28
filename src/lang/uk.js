@@ -529,6 +529,7 @@ export default {
   "anim.legend.l": "ліва сторона",
   "anim.legend.r": "права",
   "anim.bone.sel": "Кістка",
+  "anim.bones": "Кістки",
   "anim.bone.delete": "Видалити кістку",
   "anim.bone.badName": "Назва кістки — літери, цифри й _, без повторів",
   "anim.restart": "Почати скелет знову",

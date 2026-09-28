@@ -531,6 +531,7 @@ export default {
   "anim.legend.l": "левая сторона",
   "anim.legend.r": "правая",
   "anim.bone.sel": "Кость",
+  "anim.bones": "Кости",
   "anim.bone.delete": "Удалить кость",
   "anim.bone.badName": "Имя кости — буквы, цифры и _, без повторов",
   "anim.restart": "Начать скелет заново",

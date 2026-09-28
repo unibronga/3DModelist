@@ -530,6 +530,7 @@ export default {
   "anim.legend.l": "côté gauche",
   "anim.legend.r": "droit",
   "anim.bone.sel": "Os",
+  "anim.bones": "Os",
   "anim.bone.delete": "Supprimer l’os",
   "anim.bone.badName": "Nom d’os : lettres, chiffres et _, sans doublon",
   "anim.restart": "Recommencer le squelette",

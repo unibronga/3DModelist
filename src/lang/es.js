@@ -529,6 +529,7 @@ export default {
   "anim.legend.l": "lado izquierdo",
   "anim.legend.r": "derecho",
   "anim.bone.sel": "Hueso",
+  "anim.bones": "Huesos",
   "anim.bone.delete": "Borrar el hueso",
   "anim.bone.badName": "Nombre del hueso: letras, cifras y _, sin repetir",
   "anim.restart": "Empezar el esqueleto de nuevo",

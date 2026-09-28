@@ -529,6 +529,7 @@ export default {
   "anim.legend.l": "left side",
   "anim.legend.r": "right",
   "anim.bone.sel": "Bone",
+  "anim.bones": "Bones",
   "anim.bone.delete": "Delete the bone",
   "anim.bone.badName": "Bone name: letters, digits and _, no duplicates",
   "anim.restart": "Start the skeleton over",

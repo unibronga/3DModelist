@@ -530,6 +530,7 @@ export default {
   "anim.legend.l": "linkerkant",
   "anim.legend.r": "rechter",
   "anim.bone.sel": "Bot",
+  "anim.bones": "Botten",
   "anim.bone.delete": "Bot verwijderen",
   "anim.bone.badName": "Botnaam: letters, cijfers en _, geen dubbele",
   "anim.restart": "Skelet opnieuw beginnen",

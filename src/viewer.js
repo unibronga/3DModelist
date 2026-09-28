@@ -86,12 +86,15 @@ export class Viewer {
 
     new ResizeObserver(() => this.resize()).observe(host);
     this.resize();
+    // Ошибка в одном из «каждый кадр» не должна останавливать окно: иначе
+    // картинка замирает, а панель рядом живёт (скелет «не удалялся», 28.09).
+    const safe = (f) => { try { f(); } catch (e) { if (!this.loopErr) { this.loopErr = true; console.error('[viewer]', e); } } };
     const loop = () => {
-      this.controls.update();
-      for (const f of this.tickers) f();
-      r.render(this.scene, this.camera);
-      this.onFrame();
       requestAnimationFrame(loop);
+      this.controls.update();
+      for (const f of this.tickers) safe(f);
+      r.render(this.scene, this.camera);
+      safe(this.onFrame);
     };
     loop();
   }

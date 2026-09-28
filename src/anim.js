@@ -18,10 +18,14 @@ import { t, has } from './i18n.js';
 import { HUMAN_POINTS, HUMAN_BONES, MIRRORED, buildHuman, centerX, mirror, pairOf, pairBone, sideOf } from './anim-rig.js';
 import { newClip, sample, setKey, deleteKey, moveKey, keyAt, keyFrames, bake } from './anim-clip.js';
 import { Timeline } from './timeline.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 // Цвет стороны персонажа: левая — синяя, правая — зелёная, середина — фиолетовая.
 const SIDE_COLOR = { L: new THREE.Color('#3b5bdb'), R: new THREE.Color('#0ca678'), C: new THREE.Color('#7048e8') };
 const SEL = new THREE.Color('#f08c00');
+const HOVER = new THREE.Color('#ffc078');      // под курсором — видно, что возьмётся щелчком
 const HOT = new THREE.Color('#ff5a1f');
 const COLD = new THREE.Color('#c9c5bf');
 const FRONT = new THREE.Vector3(0, 0, 1);
@@ -137,6 +141,7 @@ export class Animator {
     host.addEventListener('pointerdown', (e) => mine(e) && this.down(e), true);
     host.addEventListener('pointermove', (e) => mine(e) && this.move(e), true);
     host.addEventListener('pointerup', (e) => mine(e) && this.up(e), true);
+    host.addEventListener('pointerleave', () => { if (this.hoverKey) { this.hoverKey = null; this.draw(); } });
   }
 
   get stage() {
@@ -311,6 +316,7 @@ export class Animator {
     this.undoStack = [];
     this.tool = 'add';
     this.editing = true;
+    this.draw();                                       // с экрана — сразу, не дожидаясь сервера
     if (this.st.rig || this.st.skin) {
       const st = await api(`/anim/${enc(this.name)}/reset`, { method: 'POST' }).catch((e) => { toast(errText(e), true); return null; });
       if (st) this.st = st;
@@ -643,6 +649,7 @@ export class Animator {
     }
     this.dots = [];
     this.lines = null;
+    this.linesTop = null;
   }
 
   draw() {
@@ -652,9 +659,10 @@ export class Animator {
     const stage = this.stage;
     v.controls.enableRotate = stage !== 'points';          // точки — только спереди
     new THREE.Box3().setFromObject(v.root).getCenter(this.center);
-    const r = v.span * 0.011;
+    const r = v.span * 0.012;
+    const hv = this.hoverKey;
     const dot = (get, { color, opacity = 1, joint = null, bone = null, big = false } = {}) => {
-      const m = new THREE.Mesh(new THREE.SphereGeometry(big ? r * 1.35 : r, 14, 10),
+      const m = new THREE.Mesh(new THREE.SphereGeometry(big ? r * 1.4 : r, 14, 10),
         new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false }));
       m.renderOrder = 999;
       m.userData = { get, joint, bone, opacity };
@@ -662,6 +670,7 @@ export class Animator {
       this.dots.push(m);
     };
     const local = (p) => () => v.root.localToWorld(V(p));
+    // [начало, конец, имя, цвет, выделена]
     const segs = [];
     if (stage === 'points') {
       const cx = this.markers.chin && this.markers.groin ? centerX(this.markers) : this.cx();
@@ -672,33 +681,45 @@ export class Animator {
         if (MIRRORED.has(k)) dot(local(mirror(p, cx)), { color: SIDE_COLOR.R, opacity: 0.6 });
       }
     } else if (stage === 'skeleton') {
-      const J = (id) => () => v.root.localToWorld(V(this.joints[id]));
+      // Сустав мог уже исчезнуть (правка, отмена) — точка остаётся на месте.
+      const J = (id) => { let last = new THREE.Vector3(); return () => (this.joints[id] ? (last = v.root.localToWorld(V(this.joints[id]))) : last); };
       const sb = this.rbone(this.bsel);
       const used = new Set(this.rbones.flatMap((b) => [b.head, b.tail]));
       for (const id of used) {
         const on = this.drag?.joint === id || (sb && (sb.head === id || sb.tail === id));
-        dot(J(id), { joint: id, color: on ? SEL : SIDE_COLOR[sideOf(id)], big: on });
+        dot(J(id), { joint: id, color: on ? SEL : hv === id ? HOVER : SIDE_COLOR[sideOf(id)], big: on || hv === id });
       }
-      for (const b of this.rbones) segs.push([J(b.head), J(b.tail), b.name, b.name === this.bsel ? SEL : SIDE_COLOR[sideOf(b.name)]]);
+      for (const b of this.rbones) {
+        const on = b.name === this.bsel;
+        segs.push([J(b.head), J(b.tail), b.name, on ? SEL : hv === b.name ? HOVER : SIDE_COLOR[sideOf(b.name)], on || hv === b.name]);
+      }
     } else if (stage === 'bound') {
       for (const b of this.bones) {
         const on = b.name === this.sel;
-        const color = on ? SEL : SIDE_COLOR[sideOf(b.name)];
-        dot(() => b.getWorldPosition(new THREE.Vector3()), { bone: b.name, color, big: on });
-        segs.push([() => b.getWorldPosition(new THREE.Vector3()), () => b.localToWorld(b.userData.tail.clone()), b.name, color]);
+        const color = on ? SEL : hv === b.name ? HOVER : SIDE_COLOR[sideOf(b.name)];
+        dot(() => b.getWorldPosition(new THREE.Vector3()), { bone: b.name, color, big: on || hv === b.name });
+        segs.push([() => b.getWorldPosition(new THREE.Vector3()), () => b.localToWorld(b.userData.tail.clone()), b.name, color, on || hv === b.name]);
       }
     }
-    if (segs.length) {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(segs.length * 6), 3));
-      const col = new Float32Array(segs.length * 6);
-      segs.forEach((s, i) => { s[3].toArray(col, i * 6); s[3].toArray(col, i * 6 + 3); });
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      this.lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthTest: false }));
-      this.lines.renderOrder = 998;
-      this.lines.userData.segs = segs;
-      this.group.add(this.lines);
-    }
+    // Кости — толстыми линиями (обычная линия WebGL — в пиксель, в неё не попасть);
+    // выбранная и та, что под курсором, — ещё толще, поверх остальных.
+    const fat = (list, width, order) => {
+      if (!list.length) return null;
+      const g = new LineSegmentsGeometry();
+      g.setPositions(new Float32Array(list.length * 6));
+      const col = new Float32Array(list.length * 6);
+      list.forEach((sg, k) => { sg[3].toArray(col, k * 6); sg[3].toArray(col, k * 6 + 3); });
+      g.setColors(col);
+      const m = new LineMaterial({ linewidth: width, vertexColors: true, transparent: true, opacity: 0.95, depthTest: false });
+      const line = new LineSegments2(g, m);
+      line.frustumCulled = false;
+      line.renderOrder = order;
+      line.userData.segs = list;
+      this.group.add(line);
+      return line;
+    };
+    this.lines = fat(segs, 3, 997);
+    this.linesTop = fat(segs.filter((sg) => sg[4]), 6, 998);
     const next = stage === 'points' && this.nextPoint();
     const hint = next ? t('anim.click', { name: t('anim.pt.' + next) })
       : stage === 'skeleton' && !this.rbones.length ? t('anim.first.hint') : '';
@@ -731,14 +752,13 @@ export class Animator {
       const far = tmp.copy(d.position).sub(this.center).dot(dir) > this.viewer.span * 0.03;
       d.material.opacity = d.userData.opacity * (far ? 0.35 : 1);
     }
-    if (this.lines) {
-      const pos = this.lines.geometry.attributes.position;
-      this.lines.userData.segs.forEach(([a, b], i) => {
-        pos.setXYZ(i * 2, ...a().toArray());
-        pos.setXYZ(i * 2 + 1, ...b().toArray());
-      });
-      pos.needsUpdate = true;
-      this.lines.geometry.computeBoundingSphere();
+    const size = this.viewer.renderer.getSize(new THREE.Vector2());
+    for (const line of [this.lines, this.linesTop]) {
+      if (!line) continue;
+      const buf = line.geometry.attributes.instanceStart.data;   // начала и концы — в одном буфере
+      line.userData.segs.forEach(([a, b], i) => { a().toArray(buf.array, i * 6); b().toArray(buf.array, i * 6 + 3); });
+      buf.needsUpdate = true;
+      line.material.resolution.copy(size);
     }
   }
 
@@ -753,20 +773,20 @@ export class Animator {
   // (сбоку левое закрывает правое) — берём ближний к камере.
   pick(e) {
     let best = null;
-    let bestD = 14;
+    let bestD = 18;
     let bestZ = Infinity;
     for (const d of this.dots) {
       const id = d.userData.joint || d.userData.bone;
       if (!id) continue;
       const [x, y, z] = this.screen(d.position);
       const dist = Math.hypot(x - e.clientX, y - e.clientY);
-      if (dist >= 14) continue;
+      if (dist >= 18) continue;
       if (dist < bestD - 4 || (Math.abs(dist - bestD) <= 4 && z < bestZ)) { best = d.userData; bestD = dist; bestZ = z; }
     }
     if (best) return best.joint ? { joint: best.joint } : { bone: best.bone };
     if (!this.lines) return null;
     let name = null;
-    bestD = 8;
+    bestD = 12;
     for (const [a, b, n] of this.lines.userData.segs) {
       const [ax, ay] = this.screen(a());
       const [bx, by] = this.screen(b());
@@ -803,6 +823,8 @@ export class Animator {
     if (this.drag) { this.dragTo(e); return; }
     const s = this.stage;
     const hit = (s === 'skeleton' || s === 'bound') ? this.pick(e) : null;
+    const key = hit?.joint || hit?.bone || null;
+    if (key !== this.hoverKey) { this.hoverKey = key; this.draw(); }
     this.viewer.host.style.cursor = hit?.joint ? (this.tool === 'add' ? 'copy' : 'grab') : hit?.bone ? 'pointer'
       : (s === 'points' && this.nextPoint()) || (s === 'skeleton' && this.tool === 'add') ? 'crosshair' : '';
   }
@@ -1148,6 +1170,7 @@ export class Animator {
           el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: this.mirrorEdit, onchange: (e) => { this.mirrorEdit = e.target.checked; this.onChange(); } }), t('anim.mirrorEdit')),
           el('div', { class: 'muted small anim-legend' },
             el('span', { class: 'lg l' }), t('anim.legend.l'), el('span', { class: 'lg r' }), t('anim.legend.r'))),
+        this.boneList(),
         !!sb && field(el('div', { class: 'label' }, t('anim.bone.sel')),
           el('input', { class: 'input', value: sb.name, title: boneLabel(sb.name), onchange: (e) => this.renameBone(e.target.value) }),
           el('button', { class: 'btn danger wide', onclick: () => this.deleteBone() }, t('anim.bone.delete') + ' — Delete')),
@@ -1176,9 +1199,34 @@ export class Animator {
       }
       wrap.append(this.clipsField());
       if (this.clip) wrap.append(this.clipField());
-      wrap.append(this.exportField());
+      wrap.append(...[this.boneList(), this.exportField()].filter(Boolean));
     }
     return wrap;
+  }
+
+  // Список костей: щелчок по имени — выбрать (в окне кости бывают друг за
+  // другом). Отступ — какая к какой крепится.
+  boneList() {
+    const skel = this.stage === 'skeleton';
+    const list = skel ? this.rbones.map((b) => ({ name: b.name, parent: b.parent })) : this.bones.map((b) => ({ name: b.name, parent: b.parent?.isBone ? b.parent.name : null }));
+    if (!list.length) return false;
+    const byName = new Map(list.map((b) => [b.name, b]));
+    const depth = (b) => { let d = 0; for (let p = b.parent; p && d < 30; p = byName.get(p)?.parent) d++; return d; };
+    // По дереву: ребёнок сразу под родителем.
+    const ordered = [];
+    const walk = (parent) => { for (const b of list.filter((x) => (x.parent || null) === parent)) { ordered.push(b); walk(b.name); } };
+    walk(null);
+    for (const b of list) if (!ordered.includes(b)) ordered.push(b);
+    const cur = skel ? this.bsel : this.sel;
+    const pick = (name) => (skel ? (this.bsel = name, this.draw(), this.onChange()) : this.selectBone(name));
+    return el('div', { class: 'field' },
+      el('div', { class: 'label' }, t('anim.bones'), el('span', { class: 'hint' }, String(list.length))),
+      el('div', { class: 'bone-list' }, ...ordered.map((b) => el('button', {
+        class: 'bone-row' + (b.name === cur ? ' on' : ''), style: `padding-left:${8 + depth(b) * 12}px`,
+        onclick: () => pick(b.name === cur ? null : b.name),
+        onmouseenter: () => { this.hoverKey = b.name; this.draw(); },
+        onmouseleave: () => { this.hoverKey = null; this.draw(); },
+      }, el('span', { class: 'bone-dot ' + sideOf(b.name) }), boneLabel(b.name)))));
   }
 
   // Движения по пакам: имя пака правится прямо в строке.

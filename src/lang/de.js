@@ -529,6 +529,7 @@ export default {
   "anim.legend.l": "linke Seite",
   "anim.legend.r": "rechte",
   "anim.bone.sel": "Knochen",
+  "anim.bones": "Knochen",
   "anim.bone.delete": "Knochen löschen",
   "anim.bone.badName": "Knochenname: Buchstaben, Ziffern und _, ohne Doppelte",
   "anim.restart": "Skelett neu beginnen",

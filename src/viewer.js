@@ -203,6 +203,31 @@ export class Viewer {
     this.controls.update();
   }
 
+  // Куб ориентации: смотреть с направления dir (откуда, оси окна) на ту же
+  // точку и с той же дали. Прямо сверху и снизу OrbitControls теряет «верх
+  // экрана» — чуть сдвигаем к переду модели (как вид сверху в Blender).
+  setViewDirection(dir) {
+    const target = this.controls.target;
+    const dist = this.camera.position.distanceTo(target) || this.span * 2.5;
+    const d = dir.clone().normalize();
+    if (Math.abs(d.y) > 0.999) d.set(0, Math.sign(d.y), 0.002).normalize();
+    this.camera.position.copy(target).addScaledVector(d, dist);
+    this.camera.lookAt(target);
+    this.controls.update();
+  }
+
+  // Протяжка по кубу: довернуть камеру вокруг точки взгляда, как мышью в окне.
+  orbitBy(dx, dy) {
+    const target = this.controls.target;
+    const off = this.camera.position.clone().sub(target);
+    const s = new THREE.Spherical().setFromVector3(off);
+    s.theta -= dx * 0.01;
+    s.phi = THREE.MathUtils.clamp(s.phi - dy * 0.01, 0.01, Math.PI - 0.01);
+    this.camera.position.copy(target).add(off.setFromSpherical(s));
+    this.camera.lookAt(target);
+    this.controls.update();
+  }
+
   // Ракурс как в листе агента: камера смотрит на центр модели с той же дали.
   setView(name) {
     if (!this.root || !VIEWS[name]) return;

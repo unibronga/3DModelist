@@ -62,6 +62,7 @@ export function state(name) {
     source: mainFile(m),
     base: fileInfo(path.join(d, 'base.glb')),
     turn: readJson(path.join(d, 'base.json'), {}).turn ?? null,
+    baseV: readJson(path.join(d, 'base.json'), {}).v || 1,     // 2 — лево и право найдены по симметрии
     rig: readJson(path.join(d, 'rig.json')),
     skin: fileInfo(path.join(d, 'skin.glb')),
     report: readJson(path.join(d, 'skin.json')),
@@ -96,17 +97,36 @@ async function job(name, kind, fn) {
   try { return await fn(); } finally { busy.delete(name); }
 }
 
-// Основа: модель лицом вперёд. turn — 'auto' или градусы; другой поворот —
-// точки скелета ставятся заново, поэтому скелет и привязка сбрасываются.
+// Основа: модель лицом вперёд. turn — 'auto' или градусы. Модель повернулась —
+// скелет поворачивается вместе с ней (не пропадает), привязка считается заново.
 export function prepare(name, turn = 'auto') {
   const m = model(name);
   const d = dirOf(name);
   fs.mkdirSync(d, { recursive: true });
   return job(name, 'prepare', async () => {
+    const was = readJson(path.join(d, 'base.json'), null)?.turn ?? null;
     await runPy('anim_base.py', [path.join(ws(), mainFile(m)), path.join(d, 'base.glb'), String(turn), path.join(d, 'base.json')], 120000);
-    for (const f of ['rig.json', 'skin.glb', 'skin.json']) fs.rmSync(path.join(d, f), { force: true });
+    const now = readJson(path.join(d, 'base.json'), {}).turn ?? 0;
+    const rig = readJson(path.join(d, 'rig.json'));
+    if (rig && was != null && now !== was) {
+      const turnPoint = rotator(now - was);
+      for (const k of Object.keys(rig.joints || {})) rig.joints[k] = turnPoint(rig.joints[k]);
+      for (const k of Object.keys(rig.markers || {})) rig.markers[k] = turnPoint(rig.markers[k]);
+      rig.cx = null;                                   // ось симметрии — снова по модели
+      writeJson(path.join(d, 'rig.json'), rig);
+    } else if (rig && was == null) fs.rmSync(path.join(d, 'rig.json'), { force: true });
+    if (now !== was) for (const f of ['skin.glb', 'skin.json']) fs.rmSync(path.join(d, f), { force: true });
     return state(name);
   });
+}
+
+// Поворот точки glTF (Y вверх) так же, как Blender повернул модель вокруг
+// своей вертикали Z на deg градусов (glTF x = Blender x, z = −Blender y).
+function rotator(deg) {
+  const a = (deg * Math.PI) / 180;
+  const c = Math.cos(a);
+  const sn = Math.sin(a);
+  return ([x, y, z]) => [+(x * c + z * sn).toFixed(6), y, +(-x * sn + z * c).toFixed(6)];
 }
 
 // Скелет со страницы: точки, суставы, кости. Проверяем только форму.

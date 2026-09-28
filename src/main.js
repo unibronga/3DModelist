@@ -12,6 +12,7 @@ import { MenuBar } from './menubar.js';
 import { openHelp, openAbout, REPO } from './help.js';
 import { Pins } from './pins.js';
 import { Animator } from './anim.js';
+import { ViewCube } from './viewcube.js';
 import { Tools } from './tools.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
@@ -154,8 +155,15 @@ const animator = new Animator(viewer, $('#viewport').parentElement, {
   },
   onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); },
 });
+// Куб ориентации в правом верхнем углу окна — как в 3DPainter, оси как в Blender.
+const viewCube = new ViewCube($('#viewport'), {
+  onPick: (dir) => viewer.setViewDirection(dir),
+  onOrbit: (dx, dy) => viewer.orbitBy(dx, dy),
+});
+viewer.tickers.add(() => viewCube.sync(viewer.camera));
+
 // Для проверок в самом приложении (MODELIST_SCREENSHOT_JS): окно и анимация.
-window.__modelist = { viewer, animator };
+window.__modelist = { viewer, animator, viewCube };
 
 
 // Метки → то, что уходит на сервер: точка в координатах Blender (Z вверх),

@@ -4,9 +4,11 @@
 # По base.glb человек ставит точки скелета, и по нему же Blender считает
 # привязку: координаты у страницы и у Blender — одни и те же (glTF, Y вверх).
 # Персонаж должен смотреть вперёд (в Blender на -Y, в glTF на +Z) — так его
-# ждут Godot и Unity. turn — поворот вокруг вертикали в градусах; auto —
-# угадать: руки в стороны шире всего, и если ширина легла вдоль Y, модель
-# стоит боком — повернуть на 90°. Промах человек правит кнопкой «Повернуть».
+# ждут Godot и Unity, и по оси X идёт зеркало скелета. turn — поворот вокруг
+# вертикали в градусах; auto — найти, где у модели лево и право: зеркалим
+# вершины через середину по X и по Y и смотрим, где отражение ложится на
+# модель точнее. Лево-право вдоль Y — модель стоит боком, поворачиваем на 90°.
+# Спиной к зрителю — человек разворачивает на 180° кнопкой.
 #
 #   blender --background --factory-startup --python-expr <этот код> -- src dst turn report
 
@@ -15,6 +17,7 @@ import json
 import math
 import bpy
 from mathutils import Matrix
+from mathutils.kdtree import KDTree
 
 src, dst, turn, report = sys.argv[sys.argv.index('--') + 1:][:4]
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -48,9 +51,22 @@ bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
 if turn == 'auto':
     pts = [o.matrix_world @ v.co for o in meshes for v in o.data.vertices]
-    wx = max(p.x for p in pts) - min(p.x for p in pts)
-    wy = max(p.y for p in pts) - min(p.y for p in pts)
-    turn = 270 if wy > wx * 1.15 else 0
+    kd = KDTree(len(pts))
+    for i, p in enumerate(pts):
+        kd.insert(p, i)
+    kd.balance()
+    step = max(1, len(pts) // 2000)
+
+    def mirror_error(axis):
+        c = (max(p[axis] for p in pts) + min(p[axis] for p in pts)) / 2
+        total = 0.0
+        for p in pts[::step]:
+            q = p.copy()
+            q[axis] = 2 * c - q[axis]
+            total += kd.find(q)[2]
+        return total
+
+    turn = 270 if mirror_error(1) < mirror_error(0) * 0.8 else 0
 turn = int(turn) % 360
 if turn:
     rot = Matrix.Rotation(math.radians(turn), 4, 'Z')
@@ -64,4 +80,4 @@ for o in list(scene.objects):
 
 bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB', export_yup=True,
                           export_animations=False, export_skins=False)
-json.dump({'turn': turn}, open(report, 'w'))
+json.dump({'turn': turn, 'v': 2}, open(report, 'w'))

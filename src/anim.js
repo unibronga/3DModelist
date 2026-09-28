@@ -131,10 +131,12 @@ export class Animator {
 
     // Слушаем раньше OrbitControls (фаза захвата на окне): тянем сустав или
     // кость — камера стоит; просто щёлкнули — точка или выбор кости.
+    // Только по самому окну модели: куб ориентации и панели поверх — мимо.
     const host = viewer.host;
-    host.addEventListener('pointerdown', (e) => this.name && this.down(e), true);
-    host.addEventListener('pointermove', (e) => this.name && this.move(e), true);
-    host.addEventListener('pointerup', (e) => this.name && this.up(e), true);
+    const mine = (e) => this.name && (e.target === viewer.renderer.domElement || this.drag);
+    host.addEventListener('pointerdown', (e) => mine(e) && this.down(e), true);
+    host.addEventListener('pointermove', (e) => mine(e) && this.move(e), true);
+    host.addEventListener('pointerup', (e) => mine(e) && this.up(e), true);
   }
 
   get stage() {
@@ -155,7 +157,9 @@ export class Animator {
       let st = await api(`/anim/${enc(name)}`);
       if (this.name !== name) return;
       this.st = st;
-      if (!st.base) st = await this.run('prepare', () => api(`/anim/${enc(name)}/prepare`, { method: 'POST', body: {} }));
+      // Основы нет или она из 0.5.0 (там лево-право угадывалось по ширине и
+      // модель могла остаться боком) — подготовить заново; скелет повернётся с ней.
+      if (!st.base || st.baseV < 2) st = await this.run('prepare', () => api(`/anim/${enc(name)}/prepare`, { method: 'POST', body: {} }));
       if (this.name !== name || !st) return;
       this.st = st;
       this.clips = st.clips || [];
@@ -323,10 +327,11 @@ export class Animator {
     await this.clearSkeleton(false);
   }
 
+  // Стоит спиной — развернуть на 180°. Лево и право программа находит сама,
+  // скелет поворачивается вместе с моделью.
   async turn() {
-    if (this.rbones.length && !confirm(t('anim.restart.confirm'))) return;
     const name = this.name;
-    const st = await this.run('prepare', () => api(`/anim/${enc(name)}/prepare`, { method: 'POST', body: { turn: ((this.st?.turn || 0) + 90) % 360 } }));
+    const st = await this.run('prepare', () => api(`/anim/${enc(name)}/prepare`, { method: 'POST', body: { turn: ((this.st?.turn || 0) + 180) % 360 } }));
     if (!st || this.name !== name) return;
     this.st = st;
     this.fromRig();

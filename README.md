@@ -56,6 +56,9 @@ reference from four angles, and export to `.blend` + GLB.
   model is built (agent or generator, which models) folds into one line above
   the chat; the spec, the agent's frames and **Delete task** are in the task's
   ⋯ menu (deleted tasks go to the Trash; finished files stay).
+- **Orientation cube** in the top-right corner of the view (as in 3DPainter,
+  axes as in Blender): click a face, edge, corner or axis to snap the view,
+  drag to orbit.
 - **Under the model**: Download (GLB, FBX or OBJ — the studio converts with
   Blender when needed), Show folder, and **Model is done** / **Reopen**. A done
   task keeps only its references and download buttons on the right.
@@ -65,7 +68,9 @@ reference from four angles, and export to `.blend` + GLB.
 - **Animate a finished model** — the Animation tab on the right. Build the
   skeleton by hand: press on the model and drag to grow a bone, drag from its
   end to grow the next; move joints from any side (the model turns see-through,
-  left side blue, right side green, Mirror builds both at once, ⌘Z undoes). A
+  left side blue, right side green, Mirror builds both at once, ⌘Z undoes).
+  The app finds the model's left and right itself and turns it to face front;
+  if it faces away, "Turn around 180°" turns the skeleton with it. A
   quick start is "Human from points" (chin, wrist, elbow, knee, groin), then
   edit it the same way; "Bind to the model" lets a
   windowless Blender compute which bone holds which part (generator meshes cut

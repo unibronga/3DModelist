@@ -884,8 +884,10 @@ kbd {
 /* ── инструменты окна: колонка справа, окошки, референс, части ─────────── */
 .tools-layer { position: absolute; inset: 0; zoom: var(--ui); pointer-events: none; z-index: 3; }
 .tools-layer > * { pointer-events: auto; }
+/* Куб ориентации — в правом верхнем углу окна, инструменты — под ним. */
+.viewport canvas.viewcube { inset: 8px 8px auto auto; z-index: 3; width: 104px; height: 104px; }   /* не на всё окно, как полотно модели */
 .rail {
-  position: absolute; top: 14px; right: 14px; z-index: 2;   /* над развёрнутым референсом */
+  position: absolute; top: 120px; right: 14px; z-index: 2;   /* над развёрнутым референсом */
   display: flex; flex-direction: column; gap: 4px; padding: 5px;
   background: var(--glass); backdrop-filter: blur(8px);
   border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
@@ -947,7 +949,7 @@ kbd {
   border-bottom-right-radius: 10px;
 }
 
-.partspanel { width: 270px; top: 110px; max-height: calc(100% - 124px); padding: 10px 8px 8px; }   /* ниже строки вида и строки размеров */
+.partspanel { width: 270px; top: 120px; max-height: calc(100% - 134px); padding: 10px 8px 8px; }   /* ниже строки вида и строки размеров */
 .parts-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
 .parts-head .pop-title { flex: 1; }
 .parts-list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; min-height: 0; }

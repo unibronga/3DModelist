@@ -533,7 +533,7 @@ export default {
   "tl.bone.hint": "Hueso: clic — elegir, dos clics — renombrar",
   "tl.grip.hint": "Altura: arrastra para agrandar o reducir la línea de tiempo",
   "pose.rotate": "Girar: anillos en el hueso elegido — gira, la clave se pone en el fotograma",
-  "pose.move": "Mover: flechas en el hueso elegido — desplaza, la clave se pone en el fotograma",
+  "pose.move": "Mover: arrastra las flechas — el hueso arrastra hombro y codo, las longitudes no cambian; la cadera mueve todo el cuerpo",
   "pose.reset": "Reposo: devolver el hueso elegido a su pose — clave en este fotograma",
   "anim.packs.hint": "Un paquete es una carpeta de movimientos que se exporta en un archivo. Por ejemplo, «Correr»: caminar, correr, saltar; «Lucha»: golpe, bloqueo.",
   "anim.bones.hint": "dos clics: nombre",
@@ -753,5 +753,7 @@ export default {
   "err.animAgentFail": "El agente falló: {msg}",
   "err.animAgentJson": "El agente respondió en otro formato — inténtalo de nuevo o con otro modelo",
   "err.animAgentTimeout": "El agente no terminó en 15 minutos",
-  "err.animAgentStopped": "El agente se detuvo — las claves no cambiaron"
+  "err.animAgentStopped": "El agente se detuvo — las claves no cambiaron",
+  "tip.undoAny": "Deshacer: el último cambio de esqueleto, claves o pose (⌘Z)",
+  "tip.redoAny": "Rehacer: recuperar el cambio deshecho (⇧⌘Z)"
 };

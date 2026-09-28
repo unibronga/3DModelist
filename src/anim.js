@@ -71,8 +71,9 @@ export function rotateWorld(bone, axis, angle) {
 
 export class Animator {
   // stageEl — поле с окном модели (там подсказка поверх окна и полоса времени).
-  constructor(viewer, stageEl, { onLoad = () => {}, onChange = () => {}, modelPicker = null } = {}) {
+  constructor(viewer, stageEl, { onLoad = () => {}, onChange = () => {}, onHistory = () => {}, modelPicker = null } = {}) {
     this.viewer = viewer;
+    this.onHistory = onHistory;      // есть что отменить / повторить — кнопки сверху
     this.modelPicker = modelPicker;  // выбор модели Claude для «Задачи агенту»
     this.onLoad = onLoad;          // в окне другая модель (путь в рабочей папке)
     this.onChange = onChange;      // перерисовать правую панель
@@ -92,6 +93,7 @@ export class Animator {
     this.mirrorEdit = true;        // левая и правая сторона вместе
     this.bsel = null;              // выбранная кость скелета
     this.undoStack = [];
+    this.redoStack = [];
 
     // Привязанная модель: кости three.js, выбранная кость, сгиб.
     this.bones = [];
@@ -124,10 +126,16 @@ export class Animator {
     this.tc.setMode('rotate');
     this.tc.setSpace('local');
     this.tc.size = 0.8;
+    // «Двигать» не отрывает кость от родителя: стрелки держат цель, к ней
+    // тянется конец кости, а она и два родителя поворачиваются (IK).
+    this.ikTarget = new THREE.Object3D();
+    this.ikBone = null;
+    this.tc.addEventListener('objectChange', () => { if (this.tc.object === this.ikTarget) this.solveIK(); });
     this.tc.addEventListener('dragging-changed', (e) => {
       viewer.controls.enabled = !e.value;
-      if (e.value) this.pause();
-      else this.keyBone(this.tc.object);        // отпустил кольцо — ключ на кадре
+      if (e.value) { this.pause(); return; }
+      if (this.tc.object === this.ikTarget) this.keyChain();      // отпустил стрелки — ключи цепочке
+      else this.keyBone(this.tc.object);                          // отпустил кольцо — ключ на кадре
     });
     this.tl = new Timeline(stageEl, {
       onFrame: (f) => { this.pause(); this.setFrame(f); },
@@ -178,7 +186,7 @@ export class Animator {
     this.close();
     this.name = name;
     this.viewer.tickers.add(this.tick);
-    this.viewer.scene.add(this.group, this.tc.getHelper());
+    this.viewer.scene.add(this.group, this.tc.getHelper(), this.ikTarget);
     this.onChange();
     try {
       let st = await api(`/anim/${enc(name)}`);
@@ -220,6 +228,9 @@ export class Animator {
     this.viewer.tickers.delete(this.tick);
     this.viewer.scene.remove(this.group);
     this.viewer.scene.remove(this.tc.getHelper());
+    this.viewer.scene.remove(this.ikTarget);
+    this.ikBone = null;
+    this.hist = null;
     this.clearOverlay();
     this.hint.hidden = true;
     this.viewer.controls.enabled = true;
@@ -415,6 +426,8 @@ export class Animator {
   snapshot() {
     this.undoStack.push(JSON.stringify([this.joints, this.rbones, this.rigType]));
     if (this.undoStack.length > 80) this.undoStack.shift();
+    this.redoStack = [];
+    this.onHistory();
   }
 
   restore(snap) {
@@ -425,10 +438,23 @@ export class Animator {
   undo() {
     const snap = this.undoStack.pop();
     if (!snap) return;
+    this.redoStack.push(JSON.stringify([this.joints, this.rbones, this.rigType]));
     this.restore(snap);
     this.saveRig();
     this.draw();
     this.onChange();
+    this.onHistory();
+  }
+
+  redo() {
+    const snap = this.redoStack.pop();
+    if (!snap) return;
+    this.undoStack.push(JSON.stringify([this.joints, this.rbones, this.rigType]));
+    this.restore(snap);
+    this.saveRig();
+    this.draw();
+    this.onChange();
+    this.onHistory();
   }
 
   newId(prefix, taken) {
@@ -639,9 +665,15 @@ export class Animator {
     this.viewer.apply();
     if (this.clip) {
       const b = name && this.bone(name);
+      this.ikBone = null;
       if (b) {
         this.setPoseMode(this.poseMode, false);
-        this.tc.attach(b);
+        if (this.poseMode === 'move' && b.parent?.isBone) {
+          this.ikBone = b;
+          this.ikTarget.position.copy(this.endOf(b));
+          this.ikTarget.updateMatrixWorld();
+          this.tc.attach(this.ikTarget);
+        } else this.tc.attach(b);       // корень (таз) двигается целиком, всё тело за ним
       } else this.tc.detach();
       this.draw();
       this.renderTl();
@@ -773,6 +805,7 @@ export class Animator {
       this.applyPose(f);
       this.tl.setFrame(f);
     }
+    if (this.ikBone && !this.tc.dragging) this.ikTarget.position.copy(this.endOf(this.ikBone));
     const cam = this.viewer.camera;
     const dir = cam.getWorldDirection(new THREE.Vector3());
     const tmp = new THREE.Vector3();
@@ -916,11 +949,16 @@ export class Animator {
     this.bend = 0;
     this.selectBone(this.sel);          // подкраску убрать, кольца — на выбранную кость
     this.setFrame(0);
+    this.histReset();
     if (this.agentOpen) this.openAgent();
     this.onChange();
   }
 
   closeClip(redraw = true) {
+    this.flushClip();
+    this.hist = null;
+    this.ikBone = null;
+    this.onHistory();
     this.agentOpen = false;
     this.agentCard.hidden = true;
     this.flushClip();
@@ -961,8 +999,77 @@ export class Animator {
     else this.saveTimer = setTimeout(() => this.flushClip(), 500);
   }
 
+  // ── отмена и повтор правок движения ───────────────────────────────────
+  // История — снимки ключей (и длины, скорости, круга). Снимок пишется, когда
+  // правка сохраняется (через полсекунды после последней), — серия ключей от
+  // одного движения мыши отменяется разом.
+  clipState() {
+    const c = this.clip;
+    return JSON.stringify({ keys: c.keys, frames: c.frames, fps: c.fps, loop: c.loop });
+  }
+
+  histReset() {
+    this.hist = this.clip ? { id: this.clip.id, states: [this.clipState()], i: 0 } : null;
+    this.onHistory();
+  }
+
+  histRecord() {
+    const h = this.hist;
+    if (!h || !this.clip || h.id !== this.clip.id) return;
+    const st = this.clipState();
+    if (st === h.states[h.i]) return;
+    h.states = h.states.slice(0, h.i + 1);
+    h.states.push(st);
+    if (h.states.length > 120) h.states.shift();
+    h.i = h.states.length - 1;
+    this.onHistory();
+  }
+
+  histGo(step) {
+    this.histRecord();
+    const h = this.hist;
+    const j = h ? h.i + step : -1;
+    if (!h || j < 0 || j >= h.states.length) return false;
+    this.pause();
+    h.i = j;
+    Object.assign(this.clip, JSON.parse(h.states[j]));
+    this.saveClip(this.clip);
+    this.keySel = null;
+    this.setFrame(Math.min(Math.round(this.frame), this.clip.frames));
+    this.onChange();
+    this.onHistory();
+    return true;
+  }
+
+  // Что отменять сейчас: правки скелета или правки движения.
+  canUndo() {
+    if (this.stage === 'skeleton') return this.undoStack.length > 0;
+    const h = this.hist;
+    return !!(this.clip && h && (h.i > 0 || this.clipState() !== h.states[h.i]));
+  }
+
+  canRedo() {
+    if (this.stage === 'skeleton') return this.redoStack.length > 0;
+    const h = this.hist;
+    return !!(this.clip && h && h.i < h.states.length - 1);
+  }
+
+  undoAny() { if (this.stage === 'skeleton') this.undo(); else if (this.clip) this.histGo(-1); }
+  redoAny() { if (this.stage === 'skeleton') this.redo(); else if (this.clip) this.histGo(1); }
+
+  // «Правка» из меню окна и клавиши: true — сделано здесь, иначе — правка текста.
+  edit(a) {
+    if (!this.name || this.stage === 'prepare' || this.stage === 'binding') return false;
+    if (a === 'undo') { this.undoAny(); return true; }
+    if (a === 'redo') { this.redoAny(); return true; }
+    if (a === 'copy' && this.clip) { this.copyPose(); return true; }
+    if (a === 'paste' && this.clip && this.poseBuf) { this.pastePose(); return true; }
+    return false;
+  }
+
   flushClip() {
     clearTimeout(this.saveTimer);
+    this.histRecord();
     const c = this.pendingClip;
     this.pendingClip = null;
     if (!c || !this.name) return Promise.resolve();
@@ -1148,7 +1255,54 @@ export class Animator {
     this.poseMode = mode;
     this.tc.setMode(mode === 'move' ? 'translate' : 'rotate');
     this.tc.setSpace(mode === 'move' ? 'world' : 'local');
-    if (render) { this.renderPoseRail(); this.onChange(); }
+    if (!render) return;
+    if (this.clip && this.sel) this.selectBone(this.sel);     // кольца или стрелки — на ту же кость
+    this.renderPoseRail();
+    this.onChange();
+  }
+
+  // ── «Двигать» цепочкой (IK) ────────────────────────────────────────────
+  endOf(b) { return b.localToWorld(b.userData.tail.clone()); }
+
+  // Кость и до двух родителей выше; таз не трогаем — он держит всё тело.
+  ikChain(b) {
+    const chain = [b];
+    for (let p = b.parent; p?.isBone && p !== this.rootBone && chain.length < 3; p = p.parent) chain.push(p);
+    return chain;
+  }
+
+  // CCD: по очереди от кости к родителям поворачиваем так, чтобы конец
+  // кости смотрел на цель. Длины костей не меняются — скелет не рвётся.
+  solveIK() {
+    const b = this.ikBone;
+    if (!b) return;
+    const target = this.ikTarget.getWorldPosition(new THREE.Vector3());
+    const chain = this.ikChain(b);
+    for (let it = 0; it < 16; it++) {
+      for (const j of chain) {
+        const at = j.getWorldPosition(new THREE.Vector3());
+        const a = this.endOf(b).sub(at);
+        const c = target.clone().sub(at);
+        if (a.lengthSq() < 1e-12 || c.lengthSq() < 1e-12) continue;
+        a.normalize();
+        c.normalize();
+        const angle = Math.acos(Math.min(1, Math.max(-1, a.dot(c))));
+        if (angle < 1e-4) continue;
+        const axis = new THREE.Vector3().crossVectors(a, c);
+        if (axis.lengthSq() < 1e-12) continue;
+        rotateWorld(j, axis.normalize(), angle);
+      }
+      if (this.endOf(b).distanceTo(target) < this.viewer.span * 0.0005) break;
+    }
+  }
+
+  keyChain() {
+    const b = this.ikBone;
+    if (!b || !this.clip) return;
+    for (const j of this.ikChain(b)) this.keyBone(j, false);
+    this.keySel = { bone: b.name, f: Math.round(this.frame) };
+    this.ikTarget.position.copy(this.endOf(b));     // не дотянулась — цель встаёт на конец кости
+    this.renderTl();
   }
 
   resetBone() {
@@ -1324,7 +1478,7 @@ export class Animator {
       if (c) {
         const i = this.clips.findIndex((x) => x.id === clipId);
         if (i >= 0) this.clips[i] = c; else this.clips.push(c);
-        if (this.clip?.id === clipId) this.clip = c;
+        if (this.clip?.id === clipId) { this.clip = c; this.histRecord(); }
       }
       if (this.clip?.id === clipId) {
         this.agentOpen = false;
@@ -1356,10 +1510,9 @@ export class Animator {
   key(e) {
     if (!this.name || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
     const mod = e.metaKey || e.ctrlKey;
-    // Скелет: ⌘Z — отменить правку, Delete — убрать выбранную кость.
+    // ⌘Z, ⇧⌘Z, ⌘C, ⌘V — через «Правку» (main.js). Скелет: Delete — убрать кость.
     if (this.stage === 'skeleton') {
-      if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); this.undo(); }
-      else if ((e.key === 'Delete' || e.key === 'Backspace') && this.bsel) { e.preventDefault(); this.deleteBone(); }
+      if (!mod && (e.key === 'Delete' || e.key === 'Backspace') && this.bsel) { e.preventDefault(); this.deleteBone(); }
       return;
     }
     if (!this.clip) return;
@@ -1374,9 +1527,7 @@ export class Animator {
       const to = e.shiftKey ? (e.key === 'ArrowLeft' ? [...fs].reverse().find((x) => x < f) ?? 0 : fs.find((x) => x > f) ?? this.clip.frames)
         : f + (e.key === 'ArrowLeft' ? -1 : 1);
       this.setFrame(to);
-    } else if (mod && e.key.toLowerCase() === 'c') { e.preventDefault(); this.copyPose(); }
-    else if (mod && e.key.toLowerCase() === 'v') { e.preventDefault(); this.pastePose(); }
-    else if (!mod && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'л')) this.keyNow();
+    } else if (!mod && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'л')) this.keyNow();
   }
 
   // ── выгрузка: движения → GLB (страница, GLTFExporter) → нужный формат ─

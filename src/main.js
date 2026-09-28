@@ -154,7 +154,8 @@ const animator = new Animator(viewer, $('#viewport').parentElement, {
     renderModelInfo();
     renderModelBar();
   },
-  onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); },
+  onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); renderUndo(); },
+  onHistory: () => renderUndo(),
   // «Задача агенту»: тот же выбор модели Claude, что в задачах (Haiku тоже можно).
   modelPicker: (value, onChange) => {
     const sel = modelSelect(value, { critic: true, onChange });
@@ -172,6 +173,25 @@ const viewCube = new ViewCube($('#viewport'), {
   onOrbit: (dx, dy) => viewer.orbitBy(dx, dy),
 });
 viewer.tickers.add(() => viewCube.sync(viewer.camera));
+
+// Отменить / повторить — кнопки сверху над моделью и ⌘Z / ⇧⌘Z. Клавиши
+// приходят из «Правки» окна (electron/main.cjs): в поле ввода — правка
+// текста, в анимации — правки скелета и ключей, ⌘C / ⌘V — поза.
+function renderUndo() {
+  const on = S.libSel && S.libTab === 'anim';
+  $('#undo').disabled = !(on && animator.canUndo());
+  $('#redo').disabled = !(on && animator.canRedo());
+}
+$('#undo').addEventListener('click', () => { animator.undoAny(); renderUndo(); });
+$('#redo').addEventListener('click', () => { animator.redoAny(); renderUndo(); });
+
+function handleEdit(a) {
+  const f = document.activeElement;
+  const typing = f && (/^(INPUT|TEXTAREA|SELECT)$/.test(f.tagName) || f.isContentEditable);
+  if (!typing && S.libSel && S.libTab === 'anim' && animator.edit(a)) { renderUndo(); return; }
+  window.modelist?.nativeEdit?.(a);          // host объявлен ниже — здесь напрямую
+}
+window.modelist?.onEdit?.(handleEdit);
 
 // Для проверок в самом приложении (MODELIST_SCREENSHOT_JS): окно и анимация.
 window.__modelist = { viewer, animator, viewCube };
@@ -1190,6 +1210,7 @@ function renderOutputs() { tools.renderHistory(); renderModelBar(); }
 // Выбор в левой колонке один: задача или готовая модель (владелец 28.09).
 function dropSelection() {
   animator.close();
+  setTimeout(renderUndo);
   S.sel = null;
   S.libSel = null;
   S.task = null;
@@ -1516,6 +1537,12 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'F1') { e.preventDefault(); openHelp(); return; }
   if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); selectTask(null); return; }
   if (mod && e.key === ',') { e.preventDefault(); openSettings(); return; }
+  // В браузере «Правки» окна нет — ⌘Z, ⇧⌘Z, ⌘C, ⌘V ловим здесь.
+  if (mod && !host?.onEdit && !typing && S.libSel && S.libTab === 'anim') {
+    const k = e.key.toLowerCase();
+    const a = k === 'z' ? (e.shiftKey ? 'redo' : 'undo') : k === 'c' ? 'copy' : k === 'v' ? 'paste' : null;
+    if (a && animator.edit(a)) { e.preventDefault(); renderUndo(); return; }
+  }
   if (mod && (e.key === '=' || e.key === '+')) { e.preventDefault(); setScaleUi(getScale() + 0.05); return; }
   if (mod && e.key === '-') { e.preventDefault(); setScaleUi(getScale() - 0.05); return; }
   if (mod && e.key === '0') { e.preventDefault(); setScaleUi(1); return; }

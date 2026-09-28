@@ -534,7 +534,7 @@ export default {
   "tl.bone.hint": "Os : clic — choisir, deux clics — renommer",
   "tl.grip.hint": "Hauteur : tirez pour agrandir ou réduire la frise",
   "pose.rotate": "Tourner : anneaux sur l’os choisi — tournez, la clé se pose sur l’image",
-  "pose.move": "Déplacer : flèches sur l’os choisi — déplacez, la clé se pose sur l’image",
+  "pose.move": "Déplacer : tirez les flèches — l’os entraîne épaule et coude, longueurs inchangées ; le bassin déplace tout le corps",
   "pose.reset": "Repos : remettre l’os choisi au repos — clé sur cette image",
   "anim.packs.hint": "Un pack est un dossier de mouvements exporté en un seul fichier. Par ex. « Course » : marche, course, saut ; « Combat » : frappe, parade.",
   "anim.bones.hint": "deux clics — nom",
@@ -754,5 +754,7 @@ export default {
   "err.animAgentFail": "L’agent a échoué : {msg}",
   "err.animAgentJson": "L’agent a répondu sous une mauvaise forme — réessayez ou changez de modèle",
   "err.animAgentTimeout": "L’agent n’a pas fini en 15 minutes",
-  "err.animAgentStopped": "L’agent a été arrêté — les clés n’ont pas changé"
+  "err.animAgentStopped": "L’agent a été arrêté — les clés n’ont pas changé",
+  "tip.undoAny": "Annuler : la dernière modification du squelette, des clés ou de la pose (⌘Z)",
+  "tip.redoAny": "Rétablir : refaire la modification annulée (⇧⌘Z)"
 };

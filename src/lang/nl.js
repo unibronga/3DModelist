@@ -534,7 +534,7 @@ export default {
   "tl.bone.hint": "Bot: klik — kiezen, twee keer — hernoemen",
   "tl.grip.hint": "Hoogte: sleep om de tijdlijn hoger of lager te maken",
   "pose.rotate": "Draaien: ringen op het gekozen bot — draai, de key komt op het frame",
-  "pose.move": "Verplaatsen: pijlen op het gekozen bot — schuif, de key komt op het frame",
+  "pose.move": "Verplaatsen: sleep de pijlen — het bot trekt schouder en elleboog mee, lengtes blijven; het bekken verplaatst het hele lichaam",
   "pose.reset": "Rust: het gekozen bot terug naar rust — key op dit frame",
   "anim.packs.hint": "Een pakket is een map met bewegingen die als één bestand wordt geëxporteerd. Bijv. „Rennen”: lopen, rennen, springen; „Vechten”: slag, blok.",
   "anim.bones.hint": "twee keer — naam",
@@ -754,5 +754,7 @@ export default {
   "err.animAgentFail": "De agent is mislukt: {msg}",
   "err.animAgentJson": "De agent antwoordde in de verkeerde vorm — probeer opnieuw of met een ander model",
   "err.animAgentTimeout": "De agent was niet binnen 15 minuten klaar",
-  "err.animAgentStopped": "De agent is gestopt — de keys zijn ongewijzigd"
+  "err.animAgentStopped": "De agent is gestopt — de keys zijn ongewijzigd",
+  "tip.undoAny": "Ongedaan maken: laatste wijziging aan skelet, keys of pose (⌘Z)",
+  "tip.redoAny": "Opnieuw: de ongedaan gemaakte wijziging terug (⇧⌘Z)"
 };

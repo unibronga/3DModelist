@@ -1204,3 +1204,7 @@ kbd {
 .agent-foot { display: flex; gap: 8px; align-items: flex-end; padding: 8px 12px 12px; border-top: 1px solid var(--line); }
 .agent-foot .agent-input { flex: 1; min-height: 44px; max-height: 110px; resize: vertical; }
 .agent-btn.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* Отменить / повторить — в начале строки вида над моделью. */
+.hist-btns button { padding: 6px 9px; display: grid; place-items: center; }
+.hist-btns button:disabled { opacity: 0.35; cursor: default; }

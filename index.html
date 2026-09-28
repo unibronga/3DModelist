@@ -55,6 +55,10 @@
     <!-- ── центр: модель ───────────────────────────────────────────── -->
     <main class="stage">
       <div class="toolbar">
+        <div class="seg hist-btns">
+          <button id="undo" data-i18n-title="tip.undoAny" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+          <button id="redo" data-i18n-title="tip.redoAny" disabled><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        </div>
         <div class="seg" id="view-mode">
           <button data-mode="material" class="on" data-i18n="view.material" data-i18n-title="tip.view.material"></button>
           <button data-mode="clay" data-i18n="view.clay" data-i18n-title="tip.view.clay"></button>

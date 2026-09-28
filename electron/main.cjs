@@ -127,13 +127,43 @@ function createWindow() {
   });
 }
 
-// Системное меню — стандартными ролями: их подписи macOS показывает на языке
-// системы, а язык самой студии выбирается в её настройках.
+// «Правка» — своими пунктами, а не ролью editMenu: роли съедали ⌘Z, ⌘C и ⌘V
+// раньше страницы, и отмена правок скелета и копия позы не работали (28.09).
+// Клавишу решает страница: в поле ввода — правка текста (обратно через
+// edit-native), на модели — отмена и повтор правок, копия и вставка позы.
+const EDIT_LABELS = {
+  ru: ['Правка', 'Отменить', 'Повторить', 'Вырезать', 'Копировать', 'Вставить', 'Выбрать все'],
+  uk: ['Редагування', 'Скасувати', 'Повторити', 'Вирізати', 'Копіювати', 'Вставити', 'Вибрати все'],
+  en: ['Edit', 'Undo', 'Redo', 'Cut', 'Copy', 'Paste', 'Select All'],
+  de: ['Bearbeiten', 'Widerrufen', 'Wiederholen', 'Ausschneiden', 'Kopieren', 'Einsetzen', 'Alles auswählen'],
+  fr: ['Édition', 'Annuler', 'Rétablir', 'Couper', 'Copier', 'Coller', 'Tout sélectionner'],
+  nl: ['Wijzig', 'Herstel', 'Opnieuw', 'Knip', 'Kopieer', 'Plak', 'Selecteer alles'],
+  es: ['Edición', 'Deshacer', 'Rehacer', 'Cortar', 'Copiar', 'Pegar', 'Seleccionar todo'],
+};
+const EDIT_ACTIONS = ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'];
+
+function editMenu() {
+  const L = EDIT_LABELS[app.getLocale().slice(0, 2)] || EDIT_LABELS.en;
+  const send = (a) => () => win?.webContents.send('edit', a);
+  return { label: L[0], submenu: [
+    { label: L[1], accelerator: 'CmdOrCtrl+Z', click: send('undo') },
+    { label: L[2], accelerator: 'Shift+CmdOrCtrl+Z', click: send('redo') },
+    { type: 'separator' },
+    { label: L[3], accelerator: 'CmdOrCtrl+X', click: send('cut') },
+    { label: L[4], accelerator: 'CmdOrCtrl+C', click: send('copy') },
+    { label: L[5], accelerator: 'CmdOrCtrl+V', click: send('paste') },
+    { label: L[6], accelerator: 'CmdOrCtrl+A', click: send('selectAll') },
+  ] };
+}
+ipcMain.on('edit-native', (e, a) => { if (EDIT_ACTIONS.includes(a)) e.sender[a](); });
+
+// Системное меню: подписи ролей macOS показывает на языке системы, а язык
+// самой студии выбирается в её настройках.
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     ...(isMac ? [{ role: 'appMenu' }] : []),
-    { role: 'editMenu' },
+    editMenu(),
     // viewMenu не берём: его ⌘+/⌘− масштабирует страницу, а у студии свой
     // размер интерфейса на тех же клавишах — один смысл, один регулятор.
     { role: 'windowMenu', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }, { type: 'separator' }, { role: 'front' }] },

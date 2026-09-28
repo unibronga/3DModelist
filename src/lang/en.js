@@ -533,7 +533,7 @@ export default {
   "tl.bone.hint": "Bone: click to select, click twice to rename",
   "tl.grip.hint": "Height: drag to make the timeline taller or shorter",
   "pose.rotate": "Rotate: rings on the selected bone — turn it, the key lands on the frame",
-  "pose.move": "Move: arrows on the selected bone — shift it, the key lands on the frame",
+  "pose.move": "Move: drag the arrows — the bone pulls its parents along, lengths stay the same; the hips move the whole body",
   "pose.reset": "Rest: return the selected bone to its rest pose — key on this frame",
   "anim.packs.hint": "A pack is a folder of motions exported as one file. For example “Run”: walk, run, jump; “Fight”: strike, block.",
   "anim.bones.hint": "click twice to rename",
@@ -753,5 +753,7 @@ export default {
   "err.animAgentFail": "The agent failed: {msg}",
   "err.animAgentJson": "The agent answered in the wrong form — try again or with another model",
   "err.animAgentTimeout": "The agent did not finish within 15 minutes",
-  "err.animAgentStopped": "The agent was stopped — the keys are unchanged"
+  "err.animAgentStopped": "The agent was stopped — the keys are unchanged",
+  "tip.undoAny": "Undo: the last skeleton, key or pose edit (⌘Z)",
+  "tip.redoAny": "Redo: bring back the undone edit (⇧⌘Z)"
 };

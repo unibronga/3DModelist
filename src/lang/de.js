@@ -533,7 +533,7 @@ export default {
   "tl.bone.hint": "Knochen: Klick — wählen, zweimal — umbenennen",
   "tl.grip.hint": "Höhe: ziehen — Zeitleiste höher oder niedriger",
   "pose.rotate": "Drehen: Ringe am gewählten Knochen — drehen, der Key landet auf dem Bild",
-  "pose.move": "Verschieben: Pfeile am gewählten Knochen — verschieben, der Key landet auf dem Bild",
+  "pose.move": "Verschieben: Pfeile ziehen — der Knochen zieht Schulter und Ellbogen mit, Längen bleiben; das Becken bewegt den ganzen Körper",
   "pose.reset": "Ruhe: den gewählten Knochen in die Ruhepose — Key auf diesem Bild",
   "anim.packs.hint": "Ein Paket ist ein Ordner mit Bewegungen, der als eine Datei exportiert wird. Z. B. „Laufen“: Gehen, Rennen, Sprung; „Kampf“: Schlag, Block.",
   "anim.bones.hint": "zweimal — Name",
@@ -753,5 +753,7 @@ export default {
   "err.animAgentFail": "Der Agent ist gescheitert: {msg}",
   "err.animAgentJson": "Der Agent hat im falschen Format geantwortet — nochmal oder mit anderem Modell",
   "err.animAgentTimeout": "Der Agent wurde nicht in 15 Minuten fertig",
-  "err.animAgentStopped": "Der Agent wurde gestoppt — die Keys sind unverändert"
+  "err.animAgentStopped": "Der Agent wurde gestoppt — die Keys sind unverändert",
+  "tip.undoAny": "Rückgängig: letzte Änderung an Skelett, Keys oder Pose (⌘Z)",
+  "tip.redoAny": "Wiederholen: die widerrufene Änderung zurückholen (⇧⌘Z)"
 };

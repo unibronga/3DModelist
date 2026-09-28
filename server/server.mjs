@@ -309,6 +309,7 @@ async function api(req, res, url) {
     if (parts[3] === 'clips' && parts[4] && m === 'DELETE') return send(res, 200, anim.deleteClip(name, parts[4]));
     if (parts[3] === 'packs' && m === 'PUT') return send(res, 200, anim.savePacks(name, await readBody(req)));
     if (parts[3] === 'export' && m === 'POST') return send(res, 200, anim.saveExport(name, await readBody(req)));
+    if (parts[3] === 'rename' && m === 'POST') return send(res, 200, anim.renameBone(name, await readBody(req)));
   }
 
   if (parts[1] === 'tasks') {

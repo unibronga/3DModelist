@@ -25,16 +25,29 @@ const AXES = [
   { dir: [0, 1, 0], color: '#3e63dd', label: 'Z' },
 ];
 
+// Куб под тему окна: в светлой — светлый, в тёмной — тёмный (владелец 28.09).
+// Тема — атрибут data-theme на <html>; нет его — как в системе.
+const isDark = () => {
+  const th = document.documentElement.dataset.theme;
+  return th ? th === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+};
+const PALETTE = {
+  dark: { face: '#31353b', border: '#4b525b', text: '#d8dce2', edge: 0x8b929c },
+  light: { face: '#f4f5f7', border: '#d3d7dd', text: '#3a3f47', edge: 0xa3aab4 },
+};
+const palette = () => PALETTE[isDark() ? 'dark' : 'light'];
+
 function faceTexture(label) {
+  const pal = palette();
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d');
-  g.fillStyle = '#31353b';
+  g.fillStyle = pal.face;
   g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = '#4b525b';
+  g.strokeStyle = pal.border;
   g.lineWidth = 7;
   g.strokeRect(3.5, 3.5, 121, 121);
-  g.fillStyle = '#d8dce2';
+  g.fillStyle = pal.text;
   g.font = '600 22px -apple-system, "SF Pro Text", system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -93,7 +106,8 @@ export class ViewCube {
     this.materials = FACES.map((key) => new THREE.MeshBasicMaterial({ map: faceTexture(t(key)) }));
     this.cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.materials);
     // Рёбра — без них куб в ортографии читается плоским пятном.
-    this.cube.add(new THREE.LineSegments(new THREE.EdgesGeometry(this.cube.geometry), new THREE.LineBasicMaterial({ color: 0x8b929c })));
+    this.edges = new THREE.LineSegments(new THREE.EdgesGeometry(this.cube.geometry), new THREE.LineBasicMaterial({ color: palette().edge }));
+    this.cube.add(this.edges);
     this.rig.add(this.cube);
 
     // Оси из центра наружу: линия до шарика, шарики на плюсе и на минусе.
@@ -120,8 +134,10 @@ export class ViewCube {
     this.hovered = -1;
     this.drag = null;
     this.bind();
-    // Подписи нарисованы в текстурах — смена языка их перерисовывает.
+    // Подписи и цвета нарисованы в текстурах — смена языка и темы их перерисовывает.
     onLangChange(() => this.relabel());
+    new MutationObserver(() => this.relabel()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.relabel());
   }
 
   relabel() {
@@ -130,6 +146,7 @@ export class ViewCube {
       this.materials[i].map = faceTexture(t(key));
       this.materials[i].needsUpdate = true;
     });
+    this.edges.material.color.set(palette().edge);
     this.el.title = t('tip.cube');
   }
 

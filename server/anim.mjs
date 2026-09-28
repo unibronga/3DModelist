@@ -219,3 +219,51 @@ export function saveExport(name, { file, data } = {}) {
   fs.writeFileSync(abs, Buffer.from(data, 'base64'));
   return { path: rel(abs) };
 }
+
+// Переименовать кость у привязанной модели — везде: скелет, модель с костями
+// (имя узла в skin.glb) и ключи всех движений.
+export function renameBone(name, { from, to } = {}) {
+  model(name);
+  const d = dirOf(name);
+  const rig = readJson(path.join(d, 'rig.json'));
+  to = String(to || '').trim();
+  if (!rig || !BONE_NAME.test(to) || !rig.bones.some((b) => b.name === from) || rig.bones.some((b) => b.name === to)) {
+    throw new UserError('animBadName');
+  }
+  for (const b of rig.bones) {
+    if (b.name === from) b.name = to;
+    if (b.parent === from) b.parent = to;
+  }
+  writeJson(path.join(d, 'rig.json'), rig);
+  const skin = path.join(d, 'skin.glb');
+  if (fs.existsSync(skin)) renameInGlb(skin, from, to);
+  let files = [];
+  try { files = fs.readdirSync(path.join(d, 'clips')).filter((f) => f.endsWith('.json')); } catch { /* движений нет */ }
+  for (const f of files) {
+    const p = path.join(d, 'clips', f);
+    const c = readJson(p);
+    if (c?.keys?.[from]) { c.keys[to] = c.keys[from]; delete c.keys[from]; writeJson(p, c); }
+  }
+  return state(name);
+}
+
+// GLB: заголовок 12 байт, кусок JSON (длина, тип, текст с пробелами до
+// кратного 4), кусок BIN. Меняем имя узла в JSON, BIN не трогаем.
+function renameInGlb(file, from, to) {
+  const buf = fs.readFileSync(file);
+  const len = buf.readUInt32LE(12);
+  const json = JSON.parse(buf.subarray(20, 20 + len).toString('utf8'));
+  for (const n of json.nodes || []) if (n.name === from) n.name = to;
+  let text = Buffer.from(JSON.stringify(json), 'utf8');
+  text = Buffer.concat([text, Buffer.alloc((4 - (text.length % 4)) % 4, 0x20)]);
+  const rest = buf.subarray(20 + len);
+  const out = Buffer.alloc(20 + text.length + rest.length);
+  buf.copy(out, 0, 0, 12);
+  out.writeUInt32LE(out.length, 8);
+  out.writeUInt32LE(text.length, 12);
+  out.writeUInt32LE(0x4e4f534a, 16);      // 'JSON'
+  text.copy(out, 20);
+  rest.copy(out, 20 + text.length);
+  fs.writeFileSync(file + '.tmp', out);
+  fs.renameSync(file + '.tmp', file);
+}

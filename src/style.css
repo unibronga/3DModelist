@@ -1089,35 +1089,56 @@ kbd {
 .anim-num { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
 .anim-num .input { width: 72px; padding: 5px 8px; }
 
-/* ── полоса времени под моделью ───────────────────────────────────────── */
+/* ── полоса времени: отдельная карточка под моделью ───────────────────── */
 .timeline {
-  flex: 0 0 auto; max-height: 220px; display: flex; flex-direction: column;
-  background: var(--panel); border-top: 1px solid var(--line); font-size: 12px;
+  position: relative; flex: 0 0 auto; min-height: 150px; margin: 0 12px 12px;
+  display: flex; flex-direction: column; overflow: hidden; font-size: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
 }
-.tl-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tl-grip { position: absolute; top: 0; left: 0; right: 0; height: 8px; cursor: ns-resize; z-index: 2; }
+.tl-grip::after {
+  content: ""; position: absolute; top: 3px; left: 50%; width: 40px; height: 3px; margin-left: -20px;
+  border-radius: 2px; background: var(--line-strong);
+}
+.tl-grip:hover::after { background: var(--accent); }
+.tl-bar { display: flex; align-items: center; gap: 6px; padding: 12px 12px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .tl-btn { padding: 4px 9px; font-size: 12px; }
 .tl-btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.tl-frame { color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 90px; margin-left: 4px; }
+.tl-frame { color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 84px; margin-left: 4px; }
+.tl-name { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 .tl-sp { flex: 1; }
 .tl-ease button { padding: 3px 8px; font-size: 11.5px; }
-.tl-body { display: flex; overflow-y: auto; min-height: 0; }
-.tl-labels { flex: 0 0 150px; border-right: 1px solid var(--line); }
-.tl-lab { height: 22px; line-height: 22px; padding: 0 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tl-lab.ruler-lab { height: 20px; }
-.tl-lab.all { font-weight: 600; color: var(--text); }
-.tl-lab.cur { color: var(--accent); font-weight: 600; }
-.tl-lanes { position: relative; flex: 1; margin: 0 14px; cursor: pointer; user-select: none; }
-.tl-ruler { position: relative; height: 20px; border-bottom: 1px solid var(--line); }
-.tl-tick { position: absolute; top: 3px; transform: translateX(-50%); color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.tl-lane { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
-.tl-lane.cur { background: var(--accent-soft); }
+/* Шапка (линейка, «Всё тело») и строки костей — одна сетка: колонка имён и полосы. */
+.tl-grid { display: flex; }
+.tl-top { border-bottom: 1px solid var(--line-strong); }
+.tl-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.tl-top, .tl-scroll { scrollbar-gutter: stable; overflow-y: auto; }
+.tl-top { overflow-y: hidden; }
+.tl-labels { flex: 0 0 190px; border-right: 1px solid var(--line); }
+.tl-lab {
+  height: 26px; line-height: 26px; padding: 0 10px; color: var(--text-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; user-select: none;
+  border-bottom: 1px solid var(--line);
+}
+.tl-labels .tl-lab:hover { background: var(--btn-hover-bg); color: var(--text); }
+.tl-lab.ruler-lab { height: 22px; cursor: default; }
+.tl-lab.ruler-lab:hover { background: none; }
+.tl-lab.all { font-weight: 600; color: var(--text); cursor: default; }
+.tl-lab.cur { color: #fff; background: #f08c00; font-weight: 600; }
+.tl-labels .tl-lab.cur:hover { background: #f08c00; color: #fff; }
+.tl-lab .inline-name { height: 22px; padding: 1px 6px; margin-top: 2px; font-size: 12px; }
+.tl-lanes { position: relative; flex: 1; margin: 0 16px; cursor: pointer; user-select: none; }
+.tl-ruler { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
+.tl-tick { position: absolute; top: 4px; transform: translateX(-50%); color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.tl-lane { position: relative; height: 26px; border-bottom: 1px solid var(--line); }
+.tl-lane.cur { background: color-mix(in srgb, #f08c00 14%, transparent); }
 .tl-key {
-  position: absolute; top: 50%; width: 9px; height: 9px; margin: -5px 0 0 -5px; transform: rotate(45deg);
+  position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; transform: rotate(45deg);
   background: var(--text-2); border: 1px solid var(--panel); cursor: grab;
 }
 .tl-key.all { background: var(--text); }
 .tl-key.on { background: #f08c00; }
-.tl-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.tl-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
 .anim-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .anim-legend .lg { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .anim-legend .lg.l { background: #3b5bdb; }
@@ -1126,11 +1147,26 @@ kbd {
 .bone-list { display: flex; flex-direction: column; gap: 1px; max-height: 230px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 3px; }
 .bone-row {
   display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 8px; border: 0; border-radius: 6px;
-  background: none; color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer; white-space: nowrap;
+  background: none; color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer; white-space: nowrap; user-select: none;
 }
+.bone-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bone-row .inline-name { height: 22px; padding: 1px 6px; font-size: 12px; color: var(--text); }
 .bone-row:hover { background: var(--btn-hover-bg); }
 .bone-row.on { background: #f08c00; color: #fff; }
 .bone-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: #7048e8; }
 .bone-dot.L { background: #3b5bdb; }
 .bone-dot.R { background: #0ca678; }
 .bone-row.on .bone-dot { box-shadow: 0 0 0 1.5px #fff; }
+
+/* Инструменты позы — колонка слева в окне модели (как колонка справа). */
+.pose-rail {
+  position: absolute; top: 14px; left: 14px; z-index: 3;
+  display: flex; flex-direction: column; gap: 4px; padding: 5px;
+  background: var(--glass); backdrop-filter: blur(8px);
+  border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.pack-head { display: flex; align-items: center; gap: 4px; }
+.pack-ico { display: grid; color: var(--text-3); padding-left: 4px; }
+.pack-head .pack-name { flex: 1; }
+.pack-head .link-btn { white-space: nowrap; padding: 2px 4px; }
+.anim-pack .clip-item { margin-left: 20px; width: calc(100% - 20px); }

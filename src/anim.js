@@ -17,7 +17,7 @@ import { el, api, fileUrl, toast, errText } from './ui.js';
 import { t, has } from './i18n.js';
 import { HUMAN_POINTS, HUMAN_BONES, MIRRORED, buildHuman, centerX, mirror, pairOf, pairBone, sideOf } from './anim-rig.js';
 import { newClip, sample, setKey, deleteKey, moveKey, keyAt, keyFrames, bake } from './anim-clip.js';
-import { Timeline } from './timeline.js';
+import { Timeline, inlineRename } from './timeline.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
@@ -31,6 +31,14 @@ const COLD = new THREE.Color('#c9c5bf');
 const FRONT = new THREE.Vector3(0, 0, 1);
 const V = (a) => new THREE.Vector3(...a);
 const enc = encodeURIComponent;
+
+// Инструменты позы — колонка слева в окне (как справа, те же кнопки).
+const POSE_ICONS = {
+  rotate: '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>',
+  move: '<path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
+  reset: '<path d="M4 4v6h6"/><path d="M5.5 15a8 8 0 1 0 1.9-8.3L4 10"/>',
+};
+const poseIcon = (n) => el('span', { class: 'rail-ico', html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${POSE_ICONS[n]}</svg>` });
 export const BONE_NAME = /^[\p{L}\p{N}_]{1,40}$/u;
 
 // Кость — человеческими словами: «Плечо · слева» вместо LeftUpperArm,
@@ -108,6 +116,9 @@ export class Animator {
     this.keySel = null;
     this.poseBuf = null;
     this.saveTimer = null;
+    this.poseMode = 'rotate';      // rotate — кольца, move — стрелки (любая кость)
+    this.poseRail = el('div', { class: 'pose-rail', hidden: true });
+    stageEl.append(this.poseRail);
     this.tc = new TransformControls(viewer.camera, viewer.renderer.domElement);
     this.tc.setMode('rotate');
     this.tc.setSpace('local');
@@ -129,6 +140,8 @@ export class Animator {
       onPaste: () => this.pastePose(),
       onEase: (e) => this.setEase(e),
       onDelete: () => this.deleteSel(),
+      onBone: (name) => this.selectBone(name),
+      onRename: (from, to) => this.renameAny(from, to),
     });
     viewer.host.after(this.tl.root);            // под окном модели, окно становится ниже
     document.addEventListener('keydown', (e) => this.key(e));
@@ -539,8 +552,8 @@ export class Animator {
     this.onChange();
   }
 
-  renameBone(name) {
-    const b = this.rbone(this.bsel);
+  renameBone(name, from = this.bsel) {
+    const b = this.rbone(from);
     name = name.trim();
     if (!b || name === b.name) return;
     if (!BONE_NAME.test(name) || this.rbone(name)) { toast(t('anim.bone.badName'), true); this.onChange(); return; }
@@ -611,7 +624,7 @@ export class Animator {
     if (this.clip) {
       const b = name && this.bone(name);
       if (b) {
-        if (b !== this.rootBone) this.tc.setMode('rotate');
+        this.setPoseMode(this.poseMode, false);
         this.tc.attach(b);
       } else this.tc.detach();
       this.draw();
@@ -933,8 +946,8 @@ export class Animator {
     clearTimeout(this.saveTimer);
     const c = this.pendingClip;
     this.pendingClip = null;
-    if (!c || !this.name) return;
-    this.api(`/clips/${c.id}`, { method: 'PUT', body: c }).catch((e) => toast(errText(e), true));
+    if (!c || !this.name) return Promise.resolve();
+    return this.api(`/clips/${c.id}`, { method: 'PUT', body: c }).catch((e) => toast(errText(e), true));
   }
 
   // Поза движения в кадре f → кости. Кость без ключей — в покое.
@@ -942,7 +955,7 @@ export class Animator {
     for (const b of this.bones) {
       const s = this.clip ? sample(this.clip, b.name, f) : null;
       if (s) b.quaternion.fromArray(s.q); else b.quaternion.copy(b.userData.rest);
-      if (b === this.rootBone) { if (s?.p) b.position.fromArray(s.p); else b.position.copy(b.userData.restP); }
+      if (s?.p) b.position.fromArray(s.p); else b.position.copy(b.userData.restP);
     }
     this.viewer.root?.updateMatrixWorld(true);
   }
@@ -973,7 +986,12 @@ export class Animator {
   keyBone(b, render = true) {
     if (!this.clip || !b) return;
     const f = Math.round(this.frame);
-    setKey(this.clip, b.name, f, b.quaternion.toArray(), b === this.rootBone ? b.position.toArray() : null);
+    // Сдвиг пишем, если кость сдвинута или уже двигалась в этом движении;
+    // первым сдвигом старым ключам дописываем место покоя — без рывка.
+    const ks = this.clip.keys[b.name] || [];
+    const withP = b === this.rootBone || b.position.distanceToSquared(b.userData.restP) > 1e-10 || ks.some((k) => k.p);
+    if (withP) for (const k of ks) if (!k.p) k.p = b.userData.restP.toArray().map((v) => +v.toFixed(6));
+    setKey(this.clip, b.name, f, b.quaternion.toArray(), withP ? b.position.toArray() : null);
     this.keySel = { bone: b.name, f };
     this.saveClip();
     if (render) this.renderTl();
@@ -1027,19 +1045,23 @@ export class Animator {
     if (!this.clip) return;
     this.pause();
     this.viewer.root.updateMatrixWorld(true);
+    const V3 = THREE.Vector3;
+    // Поворот от покоя (в мире) и сдвиг от покоя под нынешним родителем.
     const delta = new Map();
-    for (const b of this.bones) delta.set(b.name, b.getWorldQuaternion(new THREE.Quaternion()).multiply(b.userData.restW.clone().invert()));
-    const r = this.rootBone;
-    const shift = r ? r.getWorldPosition(new THREE.Vector3()).sub(r.userData.restWP) : null;
+    const shift = new Map();
+    for (const b of this.bones) {
+      delta.set(b.name, b.getWorldQuaternion(new THREE.Quaternion()).multiply(b.userData.restW.clone().invert()));
+      shift.set(b.name, b.getWorldPosition(new V3()).sub(b.userData.restP.clone().applyMatrix4(b.parent.matrixWorld)));
+    }
     for (const b of [...this.bones].sort((a, c) => a.userData.depth - c.userData.depth)) {
-      const d = delta.get(pairBone(b.name) || b.name);
+      const src = pairBone(b.name) && delta.has(pairBone(b.name)) ? pairBone(b.name) : b.name;
+      const d = delta.get(src);
       const w = new THREE.Quaternion(d.x, -d.y, -d.z, d.w).multiply(b.userData.restW);
       b.quaternion.copy(b.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(w));
+      const sh = shift.get(src);
+      const at = b.userData.restP.clone().applyMatrix4(b.parent.matrixWorld).add(new V3(-sh.x, sh.y, sh.z));
+      b.position.copy(b.parent.worldToLocal(at));
       b.updateMatrixWorld(true);
-    }
-    if (r) {
-      r.position.copy(r.parent.worldToLocal(r.userData.restWP.clone().add(new THREE.Vector3(-shift.x, shift.y, shift.z))));
-      r.updateMatrixWorld(true);
     }
     this.keyAll();
   }
@@ -1057,23 +1079,89 @@ export class Animator {
       const b = this.bone(name);
       if (!b) continue;
       b.quaternion.fromArray(q);
-      if (b === this.rootBone) b.position.fromArray(p);
+      b.position.fromArray(p);
     }
     this.viewer.root.updateMatrixWorld(true);
     this.keyAll();
   }
 
   renderTl() {
-    if (!this.clip || this.stage !== 'bound') { this.tl.hide(); return; }
-    const order = (this.st.rig?.bones || []).map((b) => b.name);   // как строили скелет
-    const names = new Set(Object.keys(this.clip.keys));
-    if (this.sel) names.add(this.sel);
-    const rows = [...names].sort((a, b) => order.indexOf(a) - order.indexOf(b)).map((bone) => ({ bone, label: boneLabel(bone) }));
+    if (!this.clip || this.stage !== 'bound') { this.tl.hide(); this.renderPoseRail(); return; }
+    // Все кости по дереву: у каждой своя строка, щелчок по имени — выбрать.
+    const rows = this.boneTree().map((b) => ({ bone: b.name, label: boneLabel(b.name), depth: b.depth }));
     const k = this.selKeys()[0];
+    this.renderPoseRail();
     this.tl.render({
       clip: this.clip, frame: this.frame, playing: this.playing, rows, sel: this.keySel, bone: this.sel,
       ease: k ? keyAt(this.clip, k[0], k[1])?.e || 'smooth' : null, canPaste: !!this.poseBuf,
     });
+  }
+
+  // Кости по дереву (ребёнок сразу под родителем) с глубиной — для списка и полосы.
+  boneTree() {
+    const skel = this.stage === 'skeleton';
+    const list = skel ? this.rbones.map((b) => ({ name: b.name, parent: b.parent || null }))
+      : this.bones.map((b) => ({ name: b.name, parent: b.parent?.isBone ? b.parent.name : null }));
+    const out = [];
+    const walk = (parent, depth) => {
+      for (const b of list.filter((x) => x.parent === parent)) { out.push({ ...b, depth }); walk(b.name, depth + 1); }
+    };
+    walk(null, 0);
+    for (const b of list) if (!out.some((x) => x.name === b.name)) out.push({ ...b, depth: 0 });
+    return out;
+  }
+
+  // Колонка слева в окне: вращать, двигать, вернуть кость в покой.
+  renderPoseRail() {
+    const show = !!this.clip && this.stage === 'bound';
+    this.poseRail.hidden = !show;
+    if (!show) return;
+    const b = (mode, title) => el('button', { class: 'rail-btn' + (this.poseMode === mode ? ' on' : ''), title, onclick: () => this.setPoseMode(mode) }, poseIcon(mode));
+    this.poseRail.replaceChildren(
+      b('rotate', t('pose.rotate')), b('move', t('pose.move')),
+      el('div', { class: 'rail-sep' }),
+      el('button', { class: 'rail-btn', title: t('pose.reset'), disabled: !this.sel, onclick: () => this.resetBone() }, poseIcon('reset')));
+  }
+
+  // Вращать — кольца в осях кости; двигать — стрелки в осях мира.
+  setPoseMode(mode, render = true) {
+    this.poseMode = mode;
+    this.tc.setMode(mode === 'move' ? 'translate' : 'rotate');
+    this.tc.setSpace(mode === 'move' ? 'world' : 'local');
+    if (render) { this.renderPoseRail(); this.onChange(); }
+  }
+
+  resetBone() {
+    const b = this.sel && this.bone(this.sel);
+    if (!b || !this.clip) return;
+    this.pause();
+    b.quaternion.copy(b.userData.rest);
+    b.position.copy(b.userData.restP);
+    b.updateMatrixWorld(true);
+    this.keyBone(b);
+  }
+
+  // Переименовать кость. В скелете — только скелет; у привязанной модели —
+  // везде: скелет, модель с костями и ключи всех движений (на сервере).
+  async renameAny(from, to) {
+    to = String(to || '').trim();
+    if (!to || to === from) return;
+    if (this.stage === 'skeleton') { this.renameBone(to, from); return; }
+    if (!BONE_NAME.test(to) || this.bone(to)) { toast(t('anim.bone.badName'), true); return; }
+    await this.flushClip();
+    try {
+      const st = await this.api('/rename', { method: 'POST', body: { from, to } });
+      this.st.rig = st.rig;
+      this.st.skin = st.skin;
+    } catch (e) { toast(errText(e), true); return; }
+    const b = this.bone(from);
+    if (b) b.name = to;
+    for (const c of this.clips) if (c.keys[from]) { c.keys[to] = c.keys[from]; delete c.keys[from]; }
+    if (this.sel === from) this.sel = to;
+    if (this.keySel?.bone === from) this.keySel.bone = to;
+    this.draw();
+    this.renderTl();
+    this.onChange();
   }
 
   key(e) {
@@ -1205,28 +1293,29 @@ export class Animator {
   }
 
   // Список костей: щелчок по имени — выбрать (в окне кости бывают друг за
-  // другом). Отступ — какая к какой крепится.
+  // другом), второй щелчок сразу следом — переименовать. Отступ — какая к
+  // какой крепится.
   boneList() {
     const skel = this.stage === 'skeleton';
-    const list = skel ? this.rbones.map((b) => ({ name: b.name, parent: b.parent })) : this.bones.map((b) => ({ name: b.name, parent: b.parent?.isBone ? b.parent.name : null }));
+    const list = this.boneTree();
     if (!list.length) return false;
-    const byName = new Map(list.map((b) => [b.name, b]));
-    const depth = (b) => { let d = 0; for (let p = b.parent; p && d < 30; p = byName.get(p)?.parent) d++; return d; };
-    // По дереву: ребёнок сразу под родителем.
-    const ordered = [];
-    const walk = (parent) => { for (const b of list.filter((x) => (x.parent || null) === parent)) { ordered.push(b); walk(b.name); } };
-    walk(null);
-    for (const b of list) if (!ordered.includes(b)) ordered.push(b);
     const cur = skel ? this.bsel : this.sel;
     const pick = (name) => (skel ? (this.bsel = name, this.draw(), this.onChange()) : this.selectBone(name));
+    const click = (name) => {
+      const again = this.lastRow && this.lastRow.name === name && Date.now() - this.lastRow.t < 450;
+      this.lastRow = { name, t: Date.now() };
+      if (!again) { pick(name === cur ? null : name); return; }
+      const label = document.querySelector(`.bone-row[data-bone="${CSS.escape(name)}"] .bone-name`);
+      if (label) inlineRename(label, name, (to) => this.renameAny(name, to));
+    };
     return el('div', { class: 'field' },
-      el('div', { class: 'label' }, t('anim.bones'), el('span', { class: 'hint' }, String(list.length))),
-      el('div', { class: 'bone-list' }, ...ordered.map((b) => el('button', {
-        class: 'bone-row' + (b.name === cur ? ' on' : ''), style: `padding-left:${8 + depth(b) * 12}px`,
-        onclick: () => pick(b.name === cur ? null : b.name),
+      el('div', { class: 'label' }, t('anim.bones'), el('span', { class: 'hint' }, t('anim.bones.hint'))),
+      el('div', { class: 'bone-list' }, ...list.map((b) => el('div', {
+        class: 'bone-row' + (b.name === cur ? ' on' : ''), style: `padding-left:${8 + b.depth * 12}px`, 'data-bone': b.name,
+        onclick: () => click(b.name),
         onmouseenter: () => { this.hoverKey = b.name; this.draw(); },
         onmouseleave: () => { this.hoverKey = null; this.draw(); },
-      }, el('span', { class: 'bone-dot ' + sideOf(b.name) }), boneLabel(b.name)))));
+      }, el('span', { class: 'bone-dot ' + sideOf(b.name) }), el('span', { class: 'bone-name' }, boneLabel(b.name))))));
   }
 
   // Движения по пакам: имя пака правится прямо в строке.
@@ -1235,9 +1324,10 @@ export class Animator {
     for (const p of this.packs) {
       const clips = this.clips.filter((c) => c.pack === p.id);
       list.append(el('div', { class: 'anim-pack' },
-        el('div', { class: 'row' },
+        el('div', { class: 'pack-head' },
+          el('span', { class: 'pack-ico', html: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' }),
           el('input', { class: 'input pack-name', value: p.name, title: t('anim.pack.rename'), onchange: (e) => this.renamePack(p.id, e.target.value) }),
-          el('button', { class: 'icon-mini', title: t('anim.clip.add'), onclick: () => this.addClip(p.id) }, '+'),
+          el('button', { class: 'link-btn', title: t('anim.clip.add'), onclick: () => this.addClip(p.id) }, '+ ' + t('anim.clip.new').toLowerCase()),
           !clips.length && el('button', { class: 'icon-mini', title: t('anim.pack.delete'), onclick: () => this.deletePack(p.id) }, '✕')),
         ...clips.map((c) => el('button', {
           class: 'clip-item' + (c === this.clip ? ' on' : ''),
@@ -1249,6 +1339,7 @@ export class Animator {
     for (const c of orphans) list.append(el('button', { class: 'clip-item' + (c === this.clip ? ' on' : ''), onclick: () => this.openClip(c.id) }, c.name));
     return el('div', { class: 'field' },
       el('div', { class: 'label' }, t('anim.clips')),
+      el('div', { class: 'muted small' }, t('anim.packs.hint')),
       !this.clips.length && el('div', { class: 'muted small' }, t('anim.clips.none')),
       list,
       el('div', { class: 'row' },
@@ -1259,7 +1350,6 @@ export class Animator {
   // Выбранное движение: имя, длина, скорость, по кругу, пак.
   clipField() {
     const c = this.clip;
-    const root = this.sel && this.bone(this.sel) === this.rootBone;
     return el('div', { class: 'field anim-clip' },
       el('div', { class: 'label' }, t('anim.clip')),
       el('input', { class: 'input', value: c.name, onchange: (e) => e.target.value.trim() && this.updateClip({ name: e.target.value.trim() }) }),
@@ -1270,10 +1360,6 @@ export class Animator {
       el('label', { class: 'check' }, el('input', { type: 'checkbox', checked: c.loop, onchange: (e) => this.updateClip({ loop: e.target.checked }) }), t('anim.loop')),
       this.packs.length > 1 && el('select', { class: 'input', onchange: (e) => this.updateClip({ pack: e.target.value }) },
         ...this.packs.map((p) => el('option', { value: p.id, selected: p.id === c.pack }, t('anim.inPack', { name: p.name })))),
-      // Таз можно и сдвигать: прыжок, приседание.
-      root && el('div', { class: 'seg full' },
-        el('button', { class: this.tc.mode === 'rotate' ? 'on' : '', onclick: () => { this.tc.setMode('rotate'); this.onChange(); } }, t('anim.rotate')),
-        el('button', { class: this.tc.mode === 'translate' ? 'on' : '', onclick: () => { this.tc.setMode('translate'); this.onChange(); } }, t('anim.move'))),
       el('div', { class: 'muted small' }, t(this.sel ? 'anim.pose.hint' : 'anim.pick.hint')),
       el('button', { class: 'btn danger wide', onclick: () => this.removeClip() }, t('anim.clip.delete')));
   }
@@ -1286,7 +1372,7 @@ export class Animator {
       el('span', { class: 'dl-fmt' }, fmt === 'blend' ? '.blend' : fmt.toUpperCase()), el('span', { class: 'dl-hint' }, busy === fmt ? t('anim.exp.busy') : hint));
     return el('div', { class: 'field' },
       el('div', { class: 'label' }, t('anim.exp')),
-      packs.length > 1 && el('select', { class: 'input', onchange: (e) => { this.expPack = e.target.value || null; } },
+      packs.length > 0 && el('select', { class: 'input', title: t('anim.exp.what'), onchange: (e) => { this.expPack = e.target.value || null; } },
         el('option', { value: '' }, t('anim.exp.all')),
         ...packs.map((p) => el('option', { value: p.id, selected: p.id === this.expPack }, t('anim.exp.pack', { name: p.name })))),
       el('div', { class: 'dl-list' },

@@ -23,12 +23,13 @@ import { library, taskMedia, refsTree, trashModel, trashTask } from './library.m
 import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
+import * as anim from './anim.mjs';
 import { account, dropAccountCache } from './account.mjs';
 import { listVersions, liveDir } from './live.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(HERE, '..', 'dist');
-const FILE_ROOTS = ['refs', 'renders', 'out', 'models'];
+const FILE_ROOTS = ['refs', 'renders', 'out', 'models', 'anim'];
 // Из runs/ — только версии модели и снимки с метками; задачи и ленты — через API.
 const RUNS_FILES = /^runs\/studio\/[\w-]+\/(live|marks)\/[^/]+$/;
 const VERSION = (() => {
@@ -269,7 +270,7 @@ async function api(req, res, url) {
     const src = path.resolve(ROOT, rel);
     const inside = path.relative(ROOT, src).split(path.sep);
     const ok = (FILE_ROOTS.includes(inside[0]) || RUNS_FILES.test(inside.join('/'))) && src.startsWith(ROOT + path.sep);
-    if (!ok || !/\.(glb|gltf|fbx|obj)$/i.test(src) || !fs.existsSync(src) || !['glb', 'fbx', 'obj'].includes(fmt)) {
+    if (!ok || !/\.(glb|gltf|fbx|obj)$/i.test(src) || !fs.existsSync(src) || !['glb', 'fbx', 'obj', 'blend'].includes(fmt)) {
       return send(res, 400, errBody(new UserError('noModel')));
     }
     const name = path.basename(src).replace(/\.[^.]+$/, '');
@@ -277,11 +278,13 @@ async function api(req, res, url) {
     const nice = (url.searchParams.get('name') || name).replace(/[^\w.-]+/g, '_').slice(0, 60) || name;
     if (path.extname(src).slice(1).toLowerCase() === fmt) return sendFile(res, src, true, `${nice}.${fmt}`);
     const st = fs.statSync(src);
-    const dir = path.join(ROOT, 'runs', 'export', `${name}_${Math.round(st.mtimeMs)}`);
+    // Скорость кадров — у выгрузки движений: Blender должен считать кадры так же.
+    const fps = [12, 24, 25, 30, 60].includes(Number(url.searchParams.get('fps'))) ? Number(url.searchParams.get('fps')) : null;
+    const dir = path.join(ROOT, 'runs', 'export', `${name}_${Math.round(st.mtimeMs)}${fps ? '_' + fps : ''}`);
     fs.mkdirSync(dir, { recursive: true });
     const dst = path.join(dir, `${name}.${fmt}`);
     try {
-      if (!fs.existsSync(dst)) await blender.convert(src, dst);
+      if (!fs.existsSync(dst)) await blender.convert(src, dst, { fps });
       if (fmt !== 'obj') return sendFile(res, dst, true, `${nice}.${fmt}`);
       const zip = path.join(dir, `${name}_obj.zip`);
       if (!fs.existsSync(zip)) {
@@ -292,6 +295,20 @@ async function api(req, res, url) {
     } catch (e) {
       return send(res, 500, errBody(e.code ? e : new UserError('exportFail', { msg: e.message })));
     }
+  }
+
+  // Анимация готовой модели: основа, скелет, привязка (server/anim.mjs).
+  if (parts[1] === 'anim' && parts[2]) {
+    const name = decodeURIComponent(parts[2]);
+    if (!parts[3] && m === 'GET') return send(res, 200, anim.state(name));
+    if (parts[3] === 'prepare' && m === 'POST') return send(res, 200, await anim.prepare(name, (await readBody(req)).turn ?? 'auto'));
+    if (parts[3] === 'rig' && m === 'PUT') return send(res, 200, anim.saveRig(name, await readBody(req)));
+    if (parts[3] === 'bind' && m === 'POST') return send(res, 200, await anim.bind(name));
+    if (parts[3] === 'reset' && m === 'POST') return send(res, 200, anim.resetRig(name));
+    if (parts[3] === 'clips' && parts[4] && m === 'PUT') return send(res, 200, anim.saveClip(name, parts[4], await readBody(req)));
+    if (parts[3] === 'clips' && parts[4] && m === 'DELETE') return send(res, 200, anim.deleteClip(name, parts[4]));
+    if (parts[3] === 'packs' && m === 'PUT') return send(res, 200, anim.savePacks(name, await readBody(req)));
+    if (parts[3] === 'export' && m === 'POST') return send(res, 200, anim.saveExport(name, await readBody(req)));
   }
 
   if (parts[1] === 'tasks') {

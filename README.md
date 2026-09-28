@@ -62,6 +62,17 @@ reference from four angles, and export to `.blend` + GLB.
 - **One selection on the left** — a task or a finished model, and the right
   side always shows that one. A finished model shows the task it came from,
   its references and download buttons.
+- **Animate a finished model** — the Animation tab on the right. A "Human"
+  skeleton is placed from five points (chin, wrist, elbow, knee, groin — the
+  other side is mirrored), joints can be dragged; "Bind to the model" lets a
+  windowless Blender compute which bone holds which part (generator meshes cut
+  along seams too). Check it with the Bend slider and bone colouring. Motions
+  live in packs: click a bone for rotation rings, release to set a key on the
+  frame; a timeline under the model (smooth / even / jump, mirror pose, copy
+  and paste pose, loop). Export a pack or all motions as GLB (Godot, web), FBX
+  (Unity, Unreal) or .blend. Bone names follow Unity Humanoid; looping motions
+  get a `-loop` suffix so Godot loops them. The model itself is untouched:
+  everything lives in `anim/<model>/` in the workspace.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how
   hard it thinks, and an optional reviewer (any of them, Haiku included) that

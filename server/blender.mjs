@@ -100,12 +100,17 @@ export function stopOurs() {
   if (ours) { try { process.kill(ours.pid, 'SIGTERM'); } catch { /* уже вышел */ } ours = null; }
 }
 
-// Перевести модель в другой формат (glb / fbx / obj) Blender'ом без окна —
+// Перевести модель в другой формат (glb / fbx / obj / blend) Blender'ом без окна —
 // отдельным процессом с пустой сценой: сцену агента не трогаем.
 const CONVERT_PY = `
 import bpy, sys
-src, dst = sys.argv[sys.argv.index('--') + 1:][:2]
+args = sys.argv[sys.argv.index('--') + 1:]
+src, dst = args[:2]
 bpy.ops.wm.read_factory_settings(use_empty=True)
+# Скорость движений: glTF хранит секунды, Blender считает кадры по скорости
+# сцены (по умолчанию 24). Движение в 30 к/с должно остаться 30 кадрами.
+if len(args) > 2 and args[2]:
+    bpy.context.scene.render.fps = int(args[2])
 ext = src.rsplit('.', 1)[1].lower()
 if ext in ('glb', 'gltf'):
     bpy.ops.import_scene.gltf(filepath=src)
@@ -117,16 +122,21 @@ out = dst.rsplit('.', 1)[1].lower()
 if out == 'glb':
     bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB')
 elif out == 'fbx':
-    bpy.ops.export_scene.fbx(filepath=dst)
+    # Без лишних «концевых» костей (Unity и Unreal их не ждут); каждое
+    # движение — отдельный дубль (take) со своим именем.
+    bpy.ops.export_scene.fbx(filepath=dst, add_leaf_bones=False, bake_anim_use_all_actions=True,
+                             bake_anim_use_nla_strips=False)
 elif out == 'obj':
     bpy.ops.wm.obj_export(filepath=dst)
+elif out == 'blend':
+    bpy.ops.wm.save_as_mainfile(filepath=dst)
 `;
 
-export function convert(src, dst) {
+export function convert(src, dst, { fps = null } = {}) {
   return new Promise((resolve, reject) => {
     const bin = load().blender.bin;
     if (!exists(bin)) { reject(new UserError('blNotFound')); return; }
-    const p = spawn(bin, ['--background', '--factory-startup', '--python-expr', CONVERT_PY, '--', src, dst], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(bin, ['--background', '--factory-startup', '--python-expr', CONVERT_PY, '--', src, dst, fps ? String(fps) : ''], { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     const timer = setTimeout(() => p.kill('SIGKILL'), 180000);
     p.stderr.on('data', (c) => { err = (err + c).slice(-2000); });

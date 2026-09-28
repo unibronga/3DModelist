@@ -33,6 +33,7 @@ export class Viewer {
     this.onInfo = () => {};
     this.onFrame = () => {};        // каждый кадр: метки поверх окна следуют за камерой
     this.onParts = () => {};        // список частей поменялся (новая модель, скрыли, выбрали)
+    this.tickers = new Set();       // каждый кадр: анимация, скелет поверх модели
     this.hovered = null;
     this.picked = null;             // выбранная часть (ключ)
     this.hidden = new Set();        // скрытые части по имени — переживают смену версии
@@ -87,6 +88,7 @@ export class Viewer {
     this.resize();
     const loop = () => {
       this.controls.update();
+      for (const f of this.tickers) f();
       r.render(this.scene, this.camera);
       this.onFrame();
       requestAnimationFrame(loop);
@@ -434,7 +436,7 @@ export class Viewer {
         if (m.flatShading !== this.flat) { m.flatShading = this.flat; m.needsUpdate = true; }
       }
       o.material = mats.length === 1 ? mats[0] : mats;
-      o.userData.wire.visible = this.mode === 'wire';
+      o.userData.wire.visible = this.mode === 'wire' && !o.isSkinnedMesh;   // рёбра с костями не гнутся
     });
     this.tint();
   }

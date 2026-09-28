@@ -11,6 +11,7 @@ import { splitSheet } from './sheet.js';
 import { MenuBar } from './menubar.js';
 import { openHelp, openAbout, REPO } from './help.js';
 import { Pins } from './pins.js';
+import { Animator } from './anim.js';
 import { Tools } from './tools.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
@@ -54,6 +55,7 @@ const S = {
   refsTree: null,
   sel: null,              // id выбранной задачи; null — форма новой модели
   libSel: null,           // имя выбранной готовой модели; слева выбрано что-то одно
+  libTab: 'model',        // вкладка готовой модели: model | anim
   task: null,
   events: [],
   eventsTotal: 0,
@@ -140,6 +142,21 @@ const tools = new Tools(viewer, $('#viewport'), {
   },
   onChange: () => {},
 });
+// Вкладка «Анимации» у готовой модели: скелет, привязка, движения (src/anim.js).
+const animator = new Animator(viewer, $('#viewport').parentElement, {
+  onLoad: (rel) => {
+    S.shown = 'anim:' + rel;               // не файл out/: «Модель» потом загрузит свой заново
+    S.shownVersion = null;
+    $('#empty').hidden = true;
+    tools.modelLoaded();
+    renderModelInfo();
+    renderModelBar();
+  },
+  onChange: () => { if (S.libSel && S.libTab === 'anim') renderLibPanel(); },
+});
+// Для проверок в самом приложении (MODELIST_SCREENSHOT_JS): окно и анимация.
+window.__modelist = { viewer, animator };
+
 
 // Метки → то, что уходит на сервер: точка в координатах Blender (Z вверх),
 // снимок окна с номерами — агент прочитает его глазами.
@@ -319,17 +336,25 @@ function dlField() {
 // Готовая модель, выбранная слева: справа — задача, из которой она вышла,
 // её референсы и скачивание. Чинить модель — в её задаче (владелец 28.09).
 let libPanelKey = '';
-const libKey = () => JSON.stringify([S.libSel, libModel()?.files.length, libModel()?.blend, libTask()?.id, libTask()?.name, getLang()]);
+const libKey = () => JSON.stringify([S.libSel, S.libTab, libModel()?.files.length, libModel()?.blend, libTask()?.id, libTask()?.name, getLang()]);
 function renderLibPanel() {
   const m = libModel();
   if (!m) return;
   const src = libTask();
   libPanelKey = libKey();
+  // Вкладки «Модель | Анимации» — в шапке, рядом с именем (владелец 28.09).
+  const tab = (id, label) => el('button', { class: S.libTab === id ? 'on' : '', onclick: () => setLibTab(id) }, label);
+  const head = el('div', { class: 'panel-head' },
+    el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, m.name),
+      el('div', { class: 'seg lib-tabs' }, tab('model', t('lib.tab.model')), tab('anim', t('lib.tab.anim')))),
+    el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
+      el('span', { class: 'panel-sub' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : ''))));
+  if (S.libTab === 'anim') {
+    $('#panel').replaceChildren(head, el('div', { class: 'panel-scroll' }, animator.panel()));
+    return;
+  }
   $('#panel').replaceChildren(
-    el('div', { class: 'panel-head' },
-      el('div', { class: 'panel-title' }, m.name),
-      el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
-        el('span', { class: 'panel-sub' }, t('lib.files', { n: m.files.length }) + (m.blend ? ' · .blend' : '')))),
+    head,
     el('div', { class: 'panel-scroll' },
       !!src && el('div', { class: 'field' },
         el('div', { class: 'label' }, t('lib.task')),
@@ -340,6 +365,21 @@ function renderLibPanel() {
   tools.render();
   renderModelInfo();
 }
+// Переключить вкладку готовой модели: «Анимации» грузит свою модель (с
+// костями), «Модель» — снова файл из out/.
+async function setLibTab(id) {
+  if (S.libTab === id || !S.libSel) return;
+  S.libTab = id;
+  pins.clear();
+  togglePinMode(false);
+  renderModelBar();
+  if (id === 'anim') { renderLibPanel(); await animator.open(S.libSel); return; }
+  animator.close();
+  renderLibPanel();
+  await showModel(libMain(libModel()).path, { manual: true });
+  renderDock();
+}
+
 // Опрос списков: перерисовать панель модели, только если она поменялась.
 function syncLibPanel() {
   if (S.libSel && libKey() !== libPanelKey) renderLibPanel();
@@ -383,7 +423,7 @@ function renderModelBar() {
   const bar = $('#model-bar');
   const tk = S.task;
   const src = modelSource();
-  bar.hidden = (!tk && !S.libSel) || !S.shown || !src;
+  bar.hidden = (!tk && !S.libSel) || !S.shown || !src || (S.libSel && S.libTab === 'anim');
   if (bar.hidden) { modelBarKey = ''; return; }
   const done = tk?.state === 'done';
   const key = JSON.stringify([tk?.id, S.libSel, done, !!tk?.running, src, getLang()]);
@@ -1128,6 +1168,7 @@ function renderOutputs() { tools.renderHistory(); renderModelBar(); }
 // ── выбор и опрос ─────────────────────────────────────────────────────────
 // Выбор в левой колонке один: задача или готовая модель (владелец 28.09).
 function dropSelection() {
+  animator.close();
   S.sel = null;
   S.libSel = null;
   S.task = null;
@@ -1170,6 +1211,7 @@ async function selectLibrary(name, rel = null) {
   if (!curRefs().length) tools.toggle('ref', false);
   renderLibPanel();
   renderProcess();
+  if (S.libTab === 'anim') { await animator.open(name); return; }
   await showModel(rel || libMain(m).path);
   renderDock();          // модель могла уже быть в окне — строку под ней всё равно обновить
 }

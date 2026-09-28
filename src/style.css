@@ -1047,3 +1047,72 @@ kbd {
 .lib-task { width: 100%; text-align: left; padding: 10px 12px; }
 
 .pin-quick.on { background: var(--sel-bg); border-color: var(--sel-line); color: var(--sel-fg); }
+
+/* ── вкладка «Анимации»: скелет по точкам ──────────────────────────────── */
+.lib-tabs button { padding: 5px 11px; font-size: 12.5px; }
+.anim-hint {
+  position: absolute; top: 104px; left: 50%; transform: translateX(-50%); z-index: 3;
+  font-size: 13px; font-weight: 600; white-space: nowrap; pointer-events: none;
+  color: var(--accent-btn-fg); background: var(--accent); border-radius: 999px;
+  padding: 6px 14px; box-shadow: var(--shadow);
+}
+.anim-points { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.anim-points li {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: var(--radius-s); color: var(--text-3);
+}
+.anim-points li.done { color: var(--text); }
+.anim-points li.next { border-color: var(--accent); background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.pt-mark { width: 14px; text-align: center; color: var(--ok); font-weight: 700; }
+.anim-ok { color: var(--ok); font-weight: 600; }
+.muted.small { font-size: 12px; margin-top: 6px; line-height: 1.45; }
+.anim-panel { display: flex; flex-direction: column; gap: 16px; }
+.anim-panel .btn.wide + .btn.wide { margin-top: 2px; }
+
+/* ── движения: паки и выбранное движение ──────────────────────────────── */
+.anim-panel .link-btn { font-size: 12px; }
+.anim-packs { display: flex; flex-direction: column; gap: 10px; }
+.anim-pack { display: flex; flex-direction: column; gap: 3px; }
+.anim-pack .pack-name { padding: 4px 6px; border-color: transparent; background: transparent; font-weight: 600; font-size: 12.5px; }
+.anim-pack .pack-name:hover { border-color: var(--line-strong); }
+.clip-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--btn-bg); color: var(--text); cursor: pointer; text-align: left;
+}
+.clip-item:hover { background: var(--btn-hover-bg); }
+.clip-item.on { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.clip-item .muted { font-size: 11.5px; font-weight: 400; }
+.anim-clip .row { flex-wrap: wrap; }
+.anim-num { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.anim-num .input { width: 72px; padding: 5px 8px; }
+
+/* ── полоса времени под моделью ───────────────────────────────────────── */
+.timeline {
+  flex: 0 0 auto; max-height: 220px; display: flex; flex-direction: column;
+  background: var(--panel); border-top: 1px solid var(--line); font-size: 12px;
+}
+.tl-bar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tl-btn { padding: 4px 9px; font-size: 12px; }
+.tl-btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.tl-frame { color: var(--text-2); font-variant-numeric: tabular-nums; min-width: 90px; margin-left: 4px; }
+.tl-sp { flex: 1; }
+.tl-ease button { padding: 3px 8px; font-size: 11.5px; }
+.tl-body { display: flex; overflow-y: auto; min-height: 0; }
+.tl-labels { flex: 0 0 150px; border-right: 1px solid var(--line); }
+.tl-lab { height: 22px; line-height: 22px; padding: 0 10px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-lab.ruler-lab { height: 20px; }
+.tl-lab.all { font-weight: 600; color: var(--text); }
+.tl-lab.cur { color: var(--accent); font-weight: 600; }
+.tl-lanes { position: relative; flex: 1; margin: 0 14px; cursor: pointer; user-select: none; }
+.tl-ruler { position: relative; height: 20px; border-bottom: 1px solid var(--line); }
+.tl-tick { position: absolute; top: 3px; transform: translateX(-50%); color: var(--text-3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.tl-lane { position: relative; height: 22px; border-bottom: 1px solid var(--line); }
+.tl-lane.cur { background: var(--accent-soft); }
+.tl-key {
+  position: absolute; top: 50%; width: 9px; height: 9px; margin: -5px 0 0 -5px; transform: rotate(45deg);
+  background: var(--text-2); border: 1px solid var(--panel); cursor: grab;
+}
+.tl-key.all { background: var(--text); }
+.tl-key.on { background: #f08c00; }
+.tl-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }

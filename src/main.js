@@ -67,6 +67,7 @@ const S = {
   autoFollow: true,       // сам переключаться на новую модель задачи
   framesKey: '',
   howOpen: new Set(),     // задачи, где «Как строится» раскрыли руками
+  histOpen: new Set(),    // задачи, где «История» раскрыта (в работе она свёрнута)
   howClosed: new Set(),   // …и где свернули до старта
   draft: freshDraft(),
 };
@@ -351,7 +352,9 @@ function renderDonePanel() {
     el('div', { class: 'panel-scroll' },
       refsField(tk.refs || []),
       dlField(),
-      el('div', { class: 'muted done-hint' }, t('done.hint'))));
+      el('div', { class: 'muted done-hint' }, t('done.hint')),
+      // История — внизу панели, под скачиванием (владелец 08.10).
+      tools.histBox));
   tools.render();
   renderModelInfo();
 }
@@ -1017,6 +1020,14 @@ function renderTaskPanel() {
     if (how.open) { S.howOpen.add(tk.id); S.howClosed.delete(tk.id); } else { S.howOpen.delete(tk.id); S.howClosed.add(tk.id); }
   });
   const blocks = [how];
+  // История версий — свёрнута под «Как строится»: главное место — у чата.
+  if (produced) {
+    const hist = el('details', { class: 'howto hist-how', open: S.histOpen.has(tk.id) },
+      el('summary', {}, el('span', { class: 'how-title' }, t('hist.title'))),
+      el('div', { class: 'how-body' }, tools.histBox));
+    hist.addEventListener('toggle', () => { if (hist.open) S.histOpen.add(tk.id); else S.histOpen.delete(tk.id); });
+    blocks.push(hist);
+  }
   blocks.push(el('div', { class: 'feed', id: 'feed' }));
 
   const ta = el('textarea', {
@@ -1209,7 +1220,8 @@ function historyItems() {
     const gen = m.path.includes('/gen_');
     const shot = gen && (tk.media.frames || []).find((f) => f.path.startsWith(m.path.slice(0, m.path.lastIndexOf('/') + 1)));
     items.push({ key: m.path, path: m.path, version: null, t: m.mtime, thumb: shot?.path || null,
-      title: gen ? t('hist.gen') : t('hist.file'), sub: base(m.path) });
+      // <имя>.glb рядом с сырым — его студия уже поставила в метры.
+      title: !gen ? t('hist.file') : base(m.path) === tk.slug + '.glb' ? t('hist.genFit') : t('hist.gen'), sub: base(m.path) });
   }
   return items.sort((a, b) => b.t - a.t);
 }
@@ -1476,11 +1488,11 @@ const menuBar = new MenuBar($('#menubar'), [
     '-',
     { label: () => t('view.flat'), hint: 'F', checked: () => viewer.flat, action: toggleFlat },
     { label: () => t('view.fit.hint'), hint: 'Home', disabled: () => !viewer.root, action: () => viewer.fit() },
+    { label: () => t('rail.center'), hint: 'C', disabled: () => !viewer.root, action: () => viewer.center() },
     { label: () => t('view.pin'), hint: 'M', checked: () => pins.mode, action: () => togglePinMode() },
     '-',
     { label: () => t('rail.ref'), hint: 'R', checked: () => tools.state.ref, disabled: () => !curRefs().length, action: () => tools.toggle('ref') },
     { label: () => t('rail.parts'), hint: 'P', checked: () => tools.state.parts, action: () => tools.toggle('parts') },
-    { label: () => t('hist.hint'), checked: () => tools.state.history, action: () => tools.toggle('history') },
     { label: () => t('rail.grid'), hint: 'G', checked: () => tools.state.grid, action: () => tools.toggle('grid') },
     { label: () => t('rail.human'), hint: 'H', checked: () => tools.state.human, action: () => tools.toggle('human') },
     '-',
@@ -1572,6 +1584,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key.toLowerCase() === 'g' || e.key.toLowerCase() === 'п') tools.toggle('grid');
   else if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'р') tools.toggle('human');
   else if (e.key === 'Home') viewer.fit();
+  else if (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'с') viewer.center();
 });
 
 async function boot() {

@@ -1,7 +1,8 @@
 // Инструменты окна модели — колонка справа, как в Tripo Studio:
 //   референс поверх окна (двигается, тянется за угол, прозрачность, масштаб);
 //   части модели (скрыть, выбрать, двойной щелчок — в кадр);
-//   ракурсы как в листе агента; пол с сеткой в метрах; человек 1,8 м; свет.
+//   ракурсы как в листе агента; камера в центр модели; пол с сеткой в метрах;
+//   человек 1,8 м; свет. История задачи — не здесь, а внизу правой панели.
 // Состояние вида (сетка, человек, свет) помнит браузер: это удобство человека.
 
 import { el } from './ui.js';
@@ -11,6 +12,7 @@ const ICONS = {
   ref: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>',
   parts: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+  center: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="12" r="2.5"/>',
   views: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
   grid: '<path d="M3 9h18M3 15h18M9 3v18M15 3v18"/><rect x="3" y="3" width="18" height="18" rx="2"/>',
   human: '<circle cx="12" cy="4.5" r="2"/><path d="M12 7v7M8 10h8M12 14l-3 7M12 14l3 7"/>',
@@ -37,7 +39,7 @@ export class Tools {
     this.onChange = onChange;
     this.open = null;                   // открытое окошко: views | light
     this.state = {
-      ref: false, parts: false, history: false,
+      ref: false, parts: false,
       grid: load('grid', false), human: load('human', false),
       light: load('light', { power: 1, angle: 0 }), spin: false,
     };
@@ -52,8 +54,9 @@ export class Tools {
     this.pop = el('div', { class: 'rail-pop', hidden: true });
     this.refPanel = el('div', { class: 'refpanel', hidden: true });
     this.partsPanel = el('div', { class: 'partspanel', hidden: true });
-    this.histPanel = el('div', { class: 'partspanel histpanel', hidden: true });
-    this.layer = el('div', { class: 'tools-layer' }, this.rail, this.pop, this.refPanel, this.partsPanel, this.histPanel);
+    // История — блок правой панели задачи: main.js вставляет его под скачивание.
+    this.histBox = el('div', { class: 'field hist-field' });
+    this.layer = el('div', { class: 'tools-layer' }, this.rail, this.pop, this.refPanel, this.partsPanel);
     host.append(this.layer);
 
     viewer.setLight(this.state.light);
@@ -72,9 +75,6 @@ export class Tools {
 
   toggle(name, on = !this.state[name]) {
     this.state[name] = on;
-    // Части и история стоят на одном месте — открыта одна из двух.
-    if (on && name === 'parts') this.state.history = false;
-    if (on && name === 'history') this.state.parts = false;
     this.open = null;                   // окошко ракурсов/света закрывается при любом другом инструменте
     if (name === 'grid') { this.viewer.setGrid(on); keep('grid', on); }
     if (name === 'human') { this.viewer.setHuman(on); keep('human', on); }
@@ -85,14 +85,15 @@ export class Tools {
 
   render() {
     const hasRefs = this.refs().length > 0;
-    const b = (name, title, on, onclick, disabled = false) => el('button', {
+    const b = (name, title, on, onclick, disabled = false) => (this.btns[name] = el('button', {
       class: 'rail-btn' + (on ? ' on' : ''), title, disabled, onclick,
-    }, icon(name));
+    }, icon(name)));
+    this.btns = {};
     this.rail.replaceChildren(
       b('ref', hasRefs ? t('tip.rail.ref') : t('tip.rail.refNone'), this.state.ref, () => this.toggle('ref'), !hasRefs),
       b('parts', t('tip.rail.parts'), this.state.parts, () => this.toggle('parts')),
-      b('history', t('tip.rail.history'), this.state.history, () => this.toggle('history')),
       el('div', { class: 'rail-sep' }),
+      b('center', t('tip.rail.center'), false, () => this.viewer.center()),
       b('views', t('tip.rail.views'), this.open === 'views', () => { this.open = this.open === 'views' ? null : 'views'; this.render(); }),
       b('grid', t('tip.rail.grid'), this.state.grid, () => this.toggle('grid')),
       b('human', t('tip.rail.human'), this.state.human, () => this.toggle('human')),
@@ -106,10 +107,10 @@ export class Tools {
   }
 
   // ── история модели: версии и готовые файлы задачи, новые сверху ─────────
+  // Рисуется в this.histBox; main.js ставит его внизу правой панели задачи.
   renderHistory() {
     const h = this.history;
-    this.histPanel.hidden = !this.state.history || !h;
-    if (this.histPanel.hidden) return;
+    if (!h || !this.histBox.isConnected) { this.histKey = null; return; }
     const items = h.items();
     const shown = h.shown();
     const newestVer = items.find((x) => x.version != null);
@@ -118,12 +119,10 @@ export class Tools {
     const key = JSON.stringify([items.map((x) => x.key + x.t), shown, h.busy()]);
     if (key === this.histKey) return;
     this.histKey = key;
-    this.histPanel.replaceChildren(...[
-      el('div', { class: 'parts-head' },
-        el('span', { class: 'pop-title' }, t('hist.title')),
-        el('button', { class: 'icon-mini', title: t('tip.closePanel'), onclick: () => this.toggle('history', false) }, '✕')),
+    this.histBox.replaceChildren(...[
+      el('div', { class: 'label' }, t('hist.title')),
       items.length
-        ? el('div', { class: 'parts-list' }, ...items.map((x) => el('div', {
+        ? el('div', { class: 'hist-list' }, ...items.map((x) => el('div', {
           class: 'hist' + (x.path === shown ? ' on' : ''),
           onclick: () => h.pick(x),
         },
@@ -140,7 +139,7 @@ export class Tools {
   drawPop() {
     this.pop.hidden = !this.open;
     if (!this.open) return;
-    const btn = this.rail.querySelectorAll('.rail-btn')[this.open === 'views' ? 3 : 6];
+    const btn = this.btns[this.open];
     this.pop.style.top = this.rail.offsetTop + (btn?.offsetTop || 0) + 'px';
     if (this.open === 'views') {
       const v = (name) => el('button', { class: 'btn', title: t('tip.viewDir', { name: t('view.' + name) }), onclick: () => this.viewer.setView(name) }, t('view.' + name));

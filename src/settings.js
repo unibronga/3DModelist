@@ -71,6 +71,9 @@ export async function openSettings(focus) {
 
   const modal = $('#modal');
   const results = { claude: null, fal: null };
+  // Раздел, открытый справа: тот, о котором спросили, иначе первый с бедой,
+  // иначе «Интерфейс». Окно — меню разделов слева, а не полотно (владелец 08.10).
+  let sec = SECTIONS.includes(focus) ? focus : SECTIONS.find((x) => trouble(x, h)) || 'ui';
 
   async function save(quiet = false) {
     const body = {
@@ -229,12 +232,20 @@ export async function openSettings(focus) {
           el('p', { class: 'muted' }, t('bl.port.hint')))));
 
     const todo = blockers(hs);
-    modal.replaceChildren(el('div', { class: 'sheet' },
+    const body = { ui: secUi, ws: secWs, claude: secClaude, fal: secFal, blender: secBl }[sec];
+    const nav = el('nav', { class: 'set-nav' }, ...SECTIONS.map((x) => el('button', {
+      class: 'set-nav-btn' + (x === sec ? ' on' : ''), title: t('set.nav.' + x),
+      onclick: () => { sec = x; draw(); },
+    },
+    el('span', { class: 'set-nav-ico', html: NAV_ICONS[x] }),
+    el('span', { class: 'set-nav-t' }, t('set.nav.' + x)),
+    trouble(x, hs) && el('span', { class: 'set-nav-dot' }))));
+    modal.replaceChildren(el('div', { class: 'sheet sheet-split' },
       el('div', { class: 'sheet-head' },
         el('div', {}, el('div', { class: 'panel-title' }, t('settings.title')),
           el('div', { class: 'panel-sub' }, todo.length ? t('settings.left', { list: todo.join(' · ') }) : t('settings.allReady'))),
         el('button', { class: 'btn ghost', title: t('tip.close'), onclick: close }, t('common.close'))),
-      el('div', { class: 'sheet-body' }, secUi, secWs, secClaude, secFal, secBl),
+      el('div', { class: 'sheet-main' }, nav, el('div', { class: 'sheet-body' }, body)),
       el('div', { class: 'sheet-foot' },
         el('span', { class: 'muted' }, t('settings.foot', { v: hs.version, home: st.home })),
         // «Сохранить» — сохранить и закрыть (просьба владельца 27.09).
@@ -258,5 +269,23 @@ export async function openSettings(focus) {
 
   draw();
   modal.hidden = false;
-  if (focus) $('#set-' + focus)?.scrollIntoView({ block: 'start' });
+}
+
+const SECTIONS = ['ui', 'ws', 'claude', 'fal', 'blender'];
+const svg = (d) => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const NAV_ICONS = {
+  ui: svg('<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3"/>'),
+  ws: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>'),
+  claude: svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>'),
+  fal: svg('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
+  blender: svg('<circle cx="13" cy="13" r="6"/><circle cx="13" cy="13" r="2"/><path d="M3 9l6 2M5 5l6 4"/>'),
+};
+// Раздел, где что-то мешает работать, — точка в меню. Генераторы и Blender
+// необязательны: без ключа и без Blender точки нет.
+function trouble(x, h) {
+  if (!h) return false;
+  if (x === 'ws') return !h.workspace.set || !h.workspace.ready;
+  if (x === 'claude') return !h.claude.bin || (h.claude.mode === 'api' && !h.claude.key);
+  if (x === 'blender') return !h.python;
+  return false;
 }

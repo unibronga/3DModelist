@@ -36,7 +36,7 @@ reference from four angles, and export to `.blend` + GLB.
 - **Live model and history.** Every time the agent reruns its scene script,
   the studio exports a quick snapshot from Blender: the model shows up in 3D
   while it is being built, and each step stays as a version in **History**
-  (the clock button on the right). Open any version from the same camera angle,
+  (at the bottom of the task's right panel). Open any version from the same camera angle,
   or ask the agent to restore it.
 - **Marks on the model.** Press **Mark** (M), click a part — it is highlighted
   under the cursor — and type what to fix. Marks go to the agent with your next
@@ -44,7 +44,8 @@ reference from four angles, and export to `.blend` + GLB.
   the view with numbered marks.
 - **Check tools** on the right of the view: the task's reference floating over
   the model (drag, resize, zoom, fade it to overlay), model parts (hide, select,
-  double-click to frame), views that match the agent's sheet (front, back,
+  double-click to frame), **Center** (C) to bring the model back to the middle
+  of the view at the same angle, views that match the agent's sheet (front, back,
   sides, top, 3/4), a floor grid in meters, a 1.8 m person for scale, light
   strength and rotation, and a **Normals** view where flipped faces turn red.
 - **Numbers against the spec**: size (width × depth × height, as in Blender) and

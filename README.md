@@ -132,8 +132,10 @@ A welcome window walks you through setup, one step at a time:
    Anthropic account per token, and each task shows what it cost.
 3. **Blender** — optional. It is where the agent builds models by script. You
    never need its window: 3DModelist starts Blender headless when the agent
-   begins work and shuts it down when you quit. Skip it if you only use
-   generators — they return a finished model file.
+   begins work and shuts it down when you quit. With generators it is
+   optional too, but recommended: generators return the figure in their own
+   units and sideways, and with Blender the studio puts it in meters (the
+   height you enter), facing front, on the floor. Without it you get the raw file.
 4. **Generators** — optional fal.ai key, checked without spending anything.
 
 Everything can be changed later in **Settings** (bottom left). Keys stay on

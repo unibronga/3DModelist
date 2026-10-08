@@ -9,13 +9,18 @@ import path from 'node:path';
 import { ws, addEvent, patchTask, loadTask } from './store.mjs';
 import { load as settings } from './settings.mjs';
 import { UserError } from './errors.mjs';
+import { fit } from './blender.mjs';
 
 // Цены — со страниц fal и счёта (см. скил fal-generate); get_pricing врёт.
 // `detail` — один регулятор «сколько граней»: у каждого генератора своё поле.
+// `turn` — на сколько градусов вокруг вертикали повернуть сырую фигуру, чтобы
+// она смотрела вперёд (−Y Blender): Tripo P2 ставит её лицом в +X (три
+// Киана, 25.09–07.10). У остальных не замерено — не крутим.
 export const GENERATORS = [
   {
     id: 'tripo3d/p2/image-to-3d', label: 'Tripo P2', tag: 'персонажи, чистая квад-сетка',
     typical: 110,                          // секунд: замер 27.09 — 108 с счёта
+    turn: -90,
     price: (o) => (o.texture ? 1.10 : 1.00),
     detail: { min: 500, max: 25000, def: 3500, unit: 'faces' },
     input: (img, o) => ({
@@ -42,6 +47,13 @@ export const GENERATORS = [
 ];
 
 export const genById = (id) => GENERATORS.find((g) => g.id === id);
+
+// Высота модели в метрах, которую задаёт человек (рост персонажа, высота предмета).
+export const HEIGHT = { min: 0.05, max: 50, def: 1.7 };
+const heightOf = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(HEIGHT.max, Math.max(HEIGHT.min, n)) : HEIGHT.def;
+};
 
 // Ключ: из настроек; запасные — переменная FAL_KEY и .mcp.json рабочей папки
 // (так он лежит у тех, кто уже работал с fal из Claude Code).
@@ -103,7 +115,7 @@ async function falFetch(url, opts = {}) {
 }
 
 // Отправить генерацию. Возвращает сразу; ожидание идёт в фоне.
-export async function submit(id, { model, texture, detail, ref }) {
+export async function submit(id, { model, texture, detail, height, ref }) {
   const g = genById(model);
   if (!g) throw new UserError('unknownGen');
   const task = loadTask(id);
@@ -114,7 +126,11 @@ export async function submit(id, { model, texture, detail, ref }) {
   const refAbs = path.resolve(ws(), refRel);
   if (!refAbs.startsWith(path.join(ws(), 'refs') + path.sep) || !fs.existsSync(refAbs)) throw new UserError('noRef');
 
-  const opts = { texture: !!texture, detail: g.detail ? Math.round(Math.min(g.detail.max, Math.max(g.detail.min, Number(detail) || g.detail.def))) : null };
+  const opts = {
+    texture: !!texture,
+    detail: g.detail ? Math.round(Math.min(g.detail.max, Math.max(g.detail.min, Number(detail) || g.detail.def))) : null,
+    height: heightOf(height),
+  };
   const price = g.price(opts);
   const q = await falFetch(`https://queue.fal.run/${g.id}`, {
     method: 'POST', body: JSON.stringify(g.input(dataUri(refRel), opts)),
@@ -168,6 +184,8 @@ export async function watch(id) {
     const t = loadTask(id);
     const res = await falFetch(t.gen.response_url);   // тут же приходят ошибки валидации
     const files = await download(t, res);
+    const fitted = await fitModel(t, files);
+    if (fitted) files.unshift(fitted);
     patchTask(id, (x) => {
       x.gen.state = 'done';
       x.gen.files = files;
@@ -179,6 +197,25 @@ export async function watch(id) {
     addEvent(id, { kind: 'error', key: 'ev.genFail', params: { msg: e.message } });
   } finally {
     watching.delete(id);
+  }
+}
+
+// Сырой файл генератора — в метры, лицом вперёд, на пол: <папка>/<имя>.glb
+// рядом с сырым. Без Blender или при сбое остаётся сырой файл, как раньше.
+async function fitModel(task, files) {
+  const src = files.find((f) => /\.(glb|fbx|obj)$/i.test(f));
+  if (!src) return null;
+  const height = heightOf(task.gen.opts?.height);
+  const dst = path.join(path.dirname(src), `${task.slug}.glb`);
+  try {
+    await fit(path.join(ws(), src), path.join(ws(), dst), { height, turn: genById(task.gen.model)?.turn || 0 });
+    addEvent(task.id, { kind: 'gen', key: 'ev.genFit', params: { m: height.toFixed(2) } });
+    return dst.split(path.sep).join('/');
+  } catch (e) {
+    addEvent(task.id, e.code === 'blNotFound'
+      ? { kind: 'gen', key: 'ev.genFitNoBl', params: {} }
+      : { kind: 'error', key: 'ev.genFitFail', params: { msg: e.message } });
+    return null;
   }
 }
 

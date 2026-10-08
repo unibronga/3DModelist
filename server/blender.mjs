@@ -100,8 +100,7 @@ export function stopOurs() {
   if (ours) { try { process.kill(ours.pid, 'SIGTERM'); } catch { /* уже вышел */ } ours = null; }
 }
 
-// Перевести модель в другой формат (glb / fbx / obj / blend) Blender'ом без окна —
-// отдельным процессом с пустой сценой: сцену агента не трогаем.
+// Перевести модель в другой формат (glb / fbx / obj / blend) Blender'ом без окна.
 const CONVERT_PY = `
 import bpy, sys
 args = sys.argv[sys.argv.index('--') + 1:]
@@ -133,17 +132,70 @@ elif out == 'blend':
 `;
 
 export function convert(src, dst, { fps = null } = {}) {
+  return runPy(CONVERT_PY, [src, dst, fps ? String(fps) : ''], dst);
+}
+
+// Сырой файл генератора → модель в метрах: генераторы отдают фигуру в своих
+// единицах (Tripo — 1 м по высоте, а FBX ещё и в сантиметрах: окно читало
+// его как 100 м) и боком. Повернуть лицом в −Y (перед Blender), высоту — в
+// заданные метры, подошвы на пол, центр между стоп; сетку не трогаем.
+const FIT_PY = `
+import bpy, sys, math
+from mathutils import Matrix, Vector
+args = sys.argv[sys.argv.index('--') + 1:]
+src, dst, height, turn = args[0], args[1], float(args[2]), float(args[3])
+bpy.ops.wm.read_factory_settings(use_empty=True)
+ext = src.rsplit('.', 1)[1].lower()
+if ext in ('glb', 'gltf'):
+    bpy.ops.import_scene.gltf(filepath=src)
+elif ext == 'fbx':
+    bpy.ops.import_scene.fbx(filepath=src)
+elif ext == 'obj':
+    bpy.ops.wm.obj_import(filepath=src)
+bpy.context.view_layer.update()
+meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+if not meshes:
+    raise SystemExit('в файле нет сетки')
+# Поворот и единицы файла запечь в сетку, родителей-пустышки убрать.
+R = Matrix.Rotation(math.radians(turn), 4, 'Z')
+for o in meshes:
+    mw = o.matrix_world.copy()
+    if o.data.users > 1:
+        o.data = o.data.copy()
+    o.parent = None
+    o.data.transform(R @ mw)
+    o.matrix_world = Matrix.Identity(4)
+for o in list(bpy.context.scene.objects):
+    if o.type != 'MESH':
+        bpy.data.objects.remove(o, do_unlink=True)
+pts = [v.co for o in meshes for v in o.data.vertices]
+lo = Vector([min(p[i] for p in pts) for i in range(3)])
+hi = Vector([max(p[i] for p in pts) for i in range(3)])
+k = height / max(hi.z - lo.z, 1e-9)
+M = Matrix.Scale(k, 4) @ Matrix.Translation((-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z))
+for o in meshes:
+    o.data.transform(M)
+    o.data.update()
+bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB')
+`;
+
+export function fit(src, dst, { height, turn = 0 }) {
+  return runPy(FIT_PY, [src, dst, String(height), String(turn)], dst);
+}
+
+// Отдельный Blender без окна с пустой сценой: сцену агента не трогаем.
+function runPy(code, args, dst) {
   return new Promise((resolve, reject) => {
     const bin = load().blender.bin;
     if (!exists(bin)) { reject(new UserError('blNotFound')); return; }
-    const p = spawn(bin, ['--background', '--factory-startup', '--python-expr', CONVERT_PY, '--', src, dst, fps ? String(fps) : ''], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(bin, ['--background', '--factory-startup', '--python-exit-code', '1', '--python-expr', code, '--', ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
     const timer = setTimeout(() => p.kill('SIGKILL'), 180000);
     p.stderr.on('data', (c) => { err = (err + c).slice(-2000); });
     p.on('error', (e) => { clearTimeout(timer); reject(e); });
-    p.on('close', (code) => {
+    p.on('close', (c) => {
       clearTimeout(timer);
-      if (code === 0 && exists(dst)) resolve(dst);
+      if (c === 0 && exists(dst)) resolve(dst);
       else reject(new Error(err.trim().split('\n').slice(-2).join(' ') || 'Blender не смог сохранить файл'));
     });
   });

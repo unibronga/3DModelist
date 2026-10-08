@@ -75,7 +75,7 @@ function freshDraft() {
   return {
     name: '', brief: '', route: 'script', uploads: [], refPaths: [],
     agent: { model: 'opus', effort: 'high', critic: 'opus' },
-    gen: { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null },
+    gen: { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null, height: null },
   };
 }
 
@@ -523,8 +523,12 @@ async function deleteTask(tk) {
   } catch (e) { toast(errText(e), true); }
 }
 
-// Главный файл готовой модели: свой GLB, иначе первый (сырой генератор — в gen_).
-function libMain(m) { return m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_')) || m.files[0]; }
+// Главный файл готовой модели: свой GLB; иначе GLB генератора в метрах (студия
+// ставит его рядом с сырым); иначе первый попавшийся.
+function libMain(m) {
+  return m.files.find((f) => /\.glb$/i.test(f.path) && !f.path.includes('/gen_'))
+    || m.files.find((f) => /\.glb$/i.test(f.path)) || m.files[0];
+}
 function libModel() { return S.library.find((m) => m.name === S.libSel) || null; }
 // Задача, из которой вышла готовая модель: у них одна папка.
 function libTask() { return (S.libSel && S.tasks.find((x) => x.slug === S.libSel)) || null; }
@@ -688,6 +692,15 @@ function genBlock(g, onChange) {
       el('input', {
         class: 'range', type: 'range', min: detail.min, max: detail.max, step: detail.min, value: val,
         oninput: (e) => { g.detail = Number(e.target.value); $('#detail-v').textContent = unit(g.detail); },
+      })),
+    // Генератор отдаёт фигуру в своих единицах; студия сама ставит её в метры
+    // лицом вперёд — высоту знает только человек.
+    el('div', { class: 'field' },
+      el('div', { class: 'label' }, t('gen.height'), el('span', { class: 'hint' }, t('gen.height.hint'))),
+      el('input', {
+        class: 'input', type: 'number', min: S.meta.height.min, max: S.meta.height.max, step: 0.01,
+        value: g.height ?? S.meta.height.def, title: t('tip.gen.height'),
+        oninput: (e) => { g.height = Number(e.target.value) || null; },
       })));
 }
 
@@ -1058,7 +1071,7 @@ function genCard(tk) {
   const badge = {
     queued: ['run', t('gen.queued')], running: ['run', t('gen.running')], done: ['done', t('badge.done')], error: ['err', t('badge.error')],
   }[st] || ['', t('gen.notRun')];
-  const d = S.genDraft ||= { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null, ref: null };
+  const d = S.genDraft ||= { model: 'tripo3d/p2/image-to-3d', texture: false, detail: null, height: null, ref: null };
   const busy = ['queued', 'running', 'downloading'].includes(st);
   // Картинка для генератора: выбранная; иначе — первый вырезанный вид; иначе — первый референс.
   const refs = tk.refs || [];

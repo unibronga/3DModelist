@@ -18,7 +18,7 @@ import {
 import { EFFORTS, runTurn, stopTurn, stopAll, busyTask, firstPrompt, testClaude } from './agent.mjs';
 import { versions, validModel, canModel } from './models.mjs';
 import { UserError, errBody } from './errors.mjs';
-import { GENERATORS, genById, submit, watch, testFal, falKeySource } from './fal.mjs';
+import { GENERATORS, HEIGHT, genById, submit, watch, testFal, falKeySource } from './fal.mjs';
 import { library, taskMedia, refsTree, trashModel, trashTask } from './library.mjs';
 import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
@@ -210,6 +210,7 @@ async function api(req, res, url) {
         id: g.id, label: g.label, tag: g.tag, detail: g.detail, typical: g.typical,
         price: g.price({ texture: false }), priceTex: g.price({ texture: true }),
       })),
+      height: HEIGHT,
       busy: busyTask(),
     });
   }

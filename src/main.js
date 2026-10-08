@@ -349,7 +349,7 @@ function renderDonePanel() {
       el('div', { class: 'row between' }, el('div', { class: 'panel-title' }, tk.name), menuBtn),
       el('div', { class: 'task-status' }, el('span', { class: 'badge done' }, t('status.done')),
         el('span', { class: 'panel-sub' }, [routeName(tk.route), t('task.spent', { sum: money(tk.spent_usd) })].join(' · ')))),
-    el('div', { class: 'panel-scroll' },
+    el('div', { class: 'panel-scroll done-scroll' },
       refsField(tk.refs || []),
       dlField(),
       el('div', { class: 'muted done-hint' }, t('done.hint')),

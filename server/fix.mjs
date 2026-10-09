@@ -76,7 +76,19 @@ def boundary_loops(bm):
         a, b = find(e.verts[0]), find(e.verts[1])
         if a is not b:
             parent[a] = b
-    return edges, len({find(e.verts[0]) for e in edges})
+    loops = {}
+    for e in edges:
+        loops.setdefault(find(e.verts[0]), []).append(e)
+    return list(loops.values())
+
+# Дыра — только мелкая: меньше 1,2 % размера модели (у персонажа ~2 см).
+# Крупный открытый край у генератора — вырез одежды: полы куртки, ворот,
+# манжеты, голенища. Его не закрываем — заплатка ложится поверх рубашки
+# и кулона (Киан, 09.10).
+def is_hole(loop):
+    vs = {v for e in loop for v in e.verts}
+    c = sum((v.co for v in vs), Vector()) / len(vs)
+    return max((v.co - c).length for v in vs) * 2 < diag * 0.012
 
 def tiny(comp, total):
     # Мусор — кусочек меньше 0,2 % граней модели и меньше 2 % её размера.
@@ -87,15 +99,17 @@ def tiny(comp, total):
 
 def stats():
     # Швы развёртки не считаем: GLB сам режет по ним точки, это не дефект.
-    r = dict(tris=tris(), parts=0, holes=0, flipped=0, loose=0, junk=0, nonmanifold=0)
+    r = dict(tris=tris(), parts=0, holes=0, openings=0, flipped=0, loose=0, junk=0, nonmanifold=0)
     total = sum(len(o.data.polygons) for o in meshes)
     for o in meshes:
         bm = bmesh.new()
         bm.from_mesh(o.data)
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge_dist(o))
         r['loose'] += sum(1 for v in bm.verts if not v.link_edges) + sum(1 for e in bm.edges if e.is_wire)
-        _, n = boundary_loops(bm)
+        loops = boundary_loops(bm)
+        n = sum(1 for lp in loops if is_hole(lp))
         r['holes'] += n
+        r['openings'] += len(loops) - n
         r['flipped'] += sum(1 for e in bm.edges if e.is_manifold and not e.is_contiguous)
         r['nonmanifold'] += sum(1 for e in bm.edges if len(e.link_faces) > 2)
         comps = islands(bm)
@@ -161,11 +175,11 @@ elif op in ('repair', 'cleanup'):
                     bmesh.ops.delete(bm, geom=loose, context='VERTS')
                 done['junk'] = done.get('junk', 0) + len(junk)
             else:
-                edges, n = boundary_loops(bm)
-                if edges:
-                    res = bmesh.ops.holes_fill(bm, edges=edges, sides=int(P.get('sides', 64)))
+                small = [lp for lp in boundary_loops(bm) if is_hole(lp)]
+                if small:
+                    res = bmesh.ops.holes_fill(bm, edges=[e for lp in small for e in lp], sides=0)
                     bmesh.ops.triangulate(bm, faces=[f for f in res['faces'] if len(f.verts) > 4])
-                    done['holes'] = done.get('holes', 0) + len(res['faces'])
+                    done['holes'] = done.get('holes', 0) + len(small)
                 recalc(bm)
         with_bm(o, fn)
         clear_custom(o)
@@ -192,21 +206,30 @@ elif op == 'retopo':
         def prep(bm):
             bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge_dist(o))
             bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=merge_dist(o))
-            edges, _ = boundary_loops(bm)
-            if edges:
-                bmesh.ops.holes_fill(bm, edges=edges, sides=0)
+            small = [lp for lp in boundary_loops(bm) if is_hole(lp)]
+            if small:
+                bmesh.ops.holes_fill(bm, edges=[e for lp in small for e in lp], sides=0)
             recalc(bm)
         with_bm(o, prep)
         bpy.ops.object.select_all(action='DESELECT')
         o.select_set(True)
         bpy.context.view_layer.objects.active = o
         n0 = len(o.data.polygons)
+        keep = o.data.copy()
+        box0 = [(min(v.co[i] for v in o.data.vertices), max(v.co[i] for v in o.data.vertices)) for i in range(3)]
         try:
             bpy.ops.object.quadriflow_remesh(target_faces=faces, use_preserve_sharp=True, use_preserve_boundary=False, seed=0)
         except Exception:
             pass
-        if len(o.data.polygons) == n0:
-            # Quadriflow не справился (сетка не замкнута): объём вокселями и упрощение.
+        # На незамкнутой сетке Quadriflow иногда «взрывается»: точки улетают
+        # на метры от модели (Киан, 09.10). Вышел за габариты — не годится.
+        tol = diag * 0.03
+        out = len(o.data.polygons) == n0 or not o.data.vertices or any(
+            min(v.co[i] for v in o.data.vertices) < box0[i][0] - tol or max(v.co[i] for v in o.data.vertices) > box0[i][1] + tol
+            for i in range(3))
+        if out:
+            o.data = keep
+            # Запасной путь: объём вокселями и упрощение.
             m = o.modifiers.new('Remesh', 'REMESH')
             m.mode = 'VOXEL'
             m.voxel_size = diag / 160

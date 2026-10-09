@@ -169,6 +169,8 @@ export class Fixer {
       row('loose', r.loose, 'repair'),
       row('junk', r.junk, 'cleanup'),
       row('nonmanifold', r.nonmanifold, null),
+      // Крупные открытые края — вырезы одежды генератора, не дефект: только справка.
+      r.openings > 0 && el('div', { class: 'muted' }, t('fix.rep.openings', { n: num(r.openings) })),
       !bad && el('div', { class: 'muted' }, t('fix.rep.clean')));
   }
 

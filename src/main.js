@@ -15,6 +15,7 @@ import { Animator } from './anim.js';
 import { ViewCube } from './viewcube.js';
 import { initTooltips } from './tooltip.js';
 import { Tools } from './tools.js';
+import { Fixer } from './fix.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -145,6 +146,13 @@ const tools = new Tools(viewer, $('#viewport'), {
   },
   onChange: () => {},
 });
+// «Улучшить модель» у готовой модели: шаги считает Blender без окна (src/fix.js).
+const fixer = new Fixer(viewer, {
+  show: (rel) => showModel(rel, { manual: true, keepView: true }),
+  saved: async (name) => { await refreshLibrary(); await selectLibrary(name); },
+  rerender: () => { if (S.libSel && S.libTab === 'model') renderLibPanel(); renderModelBar(); },
+  canRun: () => H.health?.blender?.bin !== false,
+});
 // Вкладка «Анимации» у готовой модели: скелет, привязка, движения (src/anim.js).
 const animator = new Animator(viewer, $('#viewport').parentElement, {
   onLoad: (rel) => {
@@ -229,11 +237,12 @@ function renderPinsList() {
       el('button', { class: 'pc-x', title: t('tip.pinRemove'), onclick: () => pins.remove(p) }, '✕'))));
 }
 
-async function showModel(rel, { manual = false, version = null } = {}) {
+async function showModel(rel, { manual = false, version = null, keepView: kv = false } = {}) {
   if (manual) S.autoFollow = false;
   if (S.shown === rel && viewer.root) return;
-  // Версии одной задачи сравниваются с одного ракурса — камеру не трогаем.
-  const keepView = version != null && S.shownVersion != null && !!viewer.root;
+  // Версии одной задачи сравниваются с одного ракурса — камеру не трогаем;
+  // шаги улучшения модели — тоже.
+  const keepView = !!viewer.root && (kv || (version != null && S.shownVersion != null));
   S.shown = rel;
   S.shownVersion = version;
   $('#empty').hidden = true;
@@ -378,6 +387,7 @@ function dlField() {
 // Готовая модель, выбранная слева: справа — задача, из которой она вышла,
 // её референсы и скачивание. Чинить модель — в её задаче (владелец 28.09).
 let libPanelKey = '';
+let libPanelModel = null;
 const libKey = () => JSON.stringify([S.libSel, S.libTab, libModel()?.files.length, libModel()?.blend, libTask()?.id, libTask()?.name, getLang()]);
 function renderLibPanel() {
   const m = libModel();
@@ -395,6 +405,10 @@ function renderLibPanel() {
     $('#panel').replaceChildren(head, el('div', { class: 'panel-scroll' }, animator.panel()));
     return;
   }
+  fixer.sync(m.name, m.files.some((f) => f.path === S.shown) ? S.shown : libMain(m).path);
+  // Та же модель — панель не прыгает наверх (кнопки улучшения внизу).
+  const keepScroll = S.libSel === libPanelModel ? $('#panel .panel-scroll')?.scrollTop || 0 : 0;
+  libPanelModel = S.libSel;
   $('#panel').replaceChildren(
     head,
     el('div', { class: 'panel-scroll' },
@@ -403,7 +417,9 @@ function renderLibPanel() {
         el('button', { class: 'btn lib-task', title: t('tip.libTask'), onclick: () => selectTask(src.id) }, src.name + ' →')),
       refsField(src?.refs || []),
       dlField(),
-      el('div', { class: 'muted done-hint' }, t('lib.hint', { path: `out/${m.name}` }))));
+      el('div', { class: 'muted done-hint' }, t('lib.hint', { path: `out/${m.name}` })),
+      fixer.panel()));
+  if (keepScroll) $('#panel .panel-scroll').scrollTop = keepScroll;
   tools.render();
   renderModelInfo();
 }
@@ -415,7 +431,7 @@ async function setLibTab(id) {
   pins.clear();
   togglePinMode(false);
   renderModelBar();
-  if (id === 'anim') { renderLibPanel(); await animator.open(S.libSel); return; }
+  if (id === 'anim') { fixer.reset(null); renderLibPanel(); await animator.open(S.libSel); return; }
   animator.close();
   renderLibPanel();
   await showModel(libMain(libModel()).path, { manual: true });
@@ -430,6 +446,7 @@ function syncLibPanel() {
 // Какую модель скачивать: открытую в окне, если она этой задачи, иначе последнюю.
 function modelSource() {
   if (S.libSel) {
+    if (fixer.edited() && S.shown === fixer.current()) return S.shown;   // правленая, ещё не сохранённая
     const m = libModel();
     return m ? (m.files.some((f) => f.path === S.shown) ? S.shown : libMain(m).path) : null;
   }
@@ -1235,6 +1252,7 @@ function renderOutputs() { tools.renderHistory(); renderModelBar(); }
 // Выбор в левой колонке один: задача или готовая модель (владелец 28.09).
 function dropSelection() {
   animator.close();
+  fixer.reset(null);
   setTimeout(renderUndo);
   S.sel = null;
   S.libSel = null;

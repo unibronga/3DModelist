@@ -132,7 +132,7 @@ elif out == 'blend':
 `;
 
 export function convert(src, dst, { fps = null } = {}) {
-  return runPy(CONVERT_PY, [src, dst, fps ? String(fps) : ''], dst);
+  return runPy(CONVERT_PY, [src, dst, fps ? String(fps) : ''], dst).then(() => dst);
 }
 
 // Сырой файл генератора → модель в метрах: генераторы отдают фигуру в своих
@@ -180,23 +180,26 @@ bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB')
 `;
 
 export function fit(src, dst, { height, turn = 0 }) {
-  return runPy(FIT_PY, [src, dst, String(height), String(turn)], dst);
+  return runPy(FIT_PY, [src, dst, String(height), String(turn)], dst).then(() => dst);
 }
 
 // Отдельный Blender без окна с пустой сценой: сцену агента не трогаем.
-function runPy(code, args, dst) {
+// dst — файл, который обязан появиться (null — не нужен); ответ — вывод Blender.
+export function runPy(code, args, dst, { timeout = 180000 } = {}) {
   return new Promise((resolve, reject) => {
     const bin = load().blender.bin;
     if (!exists(bin)) { reject(new UserError('blNotFound')); return; }
-    const p = spawn(bin, ['--background', '--factory-startup', '--python-exit-code', '1', '--python-expr', code, '--', ...args], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const p = spawn(bin, ['--background', '--factory-startup', '--python-exit-code', '1', '--python-expr', code, '--', ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
     let err = '';
-    const timer = setTimeout(() => p.kill('SIGKILL'), 180000);
+    let out = '';
+    const timer = setTimeout(() => p.kill('SIGKILL'), timeout);
+    p.stdout.on('data', (c) => { out = (out + c).slice(-200000); });
     p.stderr.on('data', (c) => { err = (err + c).slice(-2000); });
     p.on('error', (e) => { clearTimeout(timer); reject(e); });
     p.on('close', (c) => {
       clearTimeout(timer);
-      if (c === 0 && exists(dst)) resolve(dst);
-      else reject(new Error(err.trim().split('\n').slice(-2).join(' ') || 'Blender не смог сохранить файл'));
+      if (c === 0 && (!dst || exists(dst))) resolve(out);
+      else reject(new Error((err.trim() || out.trim()).split('\n').slice(-2).join(' ') || 'Blender не смог сохранить файл'));
     });
   });
 }

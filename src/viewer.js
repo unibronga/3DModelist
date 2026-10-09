@@ -212,6 +212,69 @@ export class Viewer {
     if (this.root) this.fit(new THREE.Box3().setFromObject(this.root));
   }
 
+  // «Сканирование», пока Blender считает улучшение модели: модель
+  // вращается, снизу вверх идёт светящееся кольцо, и под ним проступает
+  // сетка акцентным цветом. Выключение возвращает вид как был.
+  scan(on) {
+    if (!!on === !!this.scanFx) return;
+    if (!on) {
+      const fx = this.scanFx;
+      this.scanFx = null;
+      this.tickers.delete(fx.tick);
+      this.scene.remove(fx.ring);
+      fx.ring.geometry.dispose();
+      fx.ring.material.dispose();
+      for (const [w, mat] of fx.wires) { w.material.dispose(); w.material = mat; }
+      this.renderer.localClippingEnabled = false;
+      this.controls.autoRotate = fx.spin;
+      this.apply();
+      return;
+    }
+    if (!this.root) return;
+    const css = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c8cff';
+    const color = new THREE.Color(css);
+    const box = new THREE.Box3().setFromObject(this.root);
+    const size = box.getSize(new THREE.Vector3());
+    const c = box.getCenter(new THREE.Vector3());
+    const r = Math.max(size.x, size.z) * 0.62 || 1;
+    const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), box.min.y);
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(r, 96), new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      uniforms: { uColor: { value: color } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform vec3 uColor; varying vec2 vUv;
+        void main(){ float d = length(vUv - 0.5) * 2.0;
+          float edge = smoothstep(0.86, 0.98, d) * (1.0 - smoothstep(0.98, 1.0, d));
+          float a = edge * 0.9 + (1.0 - d) * 0.10;
+          gl_FragColor = vec4(uColor, a); }`,
+    }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(c.x, box.min.y, c.z);
+    ring.renderOrder = 10;
+    this.scene.add(ring);
+    const wires = [];
+    this.root.traverse((o) => {
+      const w = o.userData?.wire;
+      if (!w) return;
+      wires.push([w, w.material]);
+      w.material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, clippingPlanes: [plane] });
+      w.visible = true;
+    });
+    this.renderer.localClippingEnabled = true;
+    const t0 = performance.now();
+    const period = 2600;
+    const tick = () => {
+      const k = ((performance.now() - t0) % period) / period;
+      const y = box.min.y + size.y * (k < 0.85 ? k / 0.85 : 1);   // доходит до макушки и чуть ждёт
+      ring.position.y = y;
+      plane.constant = y;
+      ring.material.opacity = 1;
+    };
+    this.tickers.add(tick);
+    this.scanFx = { ring, wires, tick, spin: this.controls.autoRotate };
+    this.controls.autoRotate = true;
+  }
+
   // Куб ориентации: смотреть с направления dir (откуда, оси окна) на ту же
   // точку и с той же дали. Прямо сверху и снизу OrbitControls теряет «верх
   // экрана» — чуть сдвигаем к переду модели (как вид сверху в Blender).

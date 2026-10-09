@@ -42,6 +42,11 @@ reference from four angles, and export to `.blend` + GLB.
   under the cursor — and type what to fix. Marks go to the agent with your next
   message: the part's name, the point in Blender coordinates and a snapshot of
   the view with numbered marks.
+- **Improve the model** — a block on a finished model: check it (holes, flipped
+  faces, debris), fix normals, repair (seams, holes), clean up, fewer faces,
+  retopology (an even quad mesh), sharp facets or smooth shading. A windowless
+  Blender computes each step while the model is "scanned" in the view; steps
+  can be undone, and **Save as a new model** keeps the original untouched.
 - **Check tools** on the right of the view: the task's reference floating over
   the model (drag, resize, zoom, fade it to overlay), model parts (hide, select,
   double-click to frame), **Center** (C) to bring the model back to the middle

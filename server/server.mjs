@@ -26,12 +26,14 @@ import * as blender from './blender.mjs';
 import * as anim from './anim.mjs';
 import { account, dropAccountCache } from './account.mjs';
 import { listVersions, liveDir } from './live.mjs';
+import { runFix, undoFix, dropFix, saveFix } from './fix.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(HERE, '..', 'dist');
 const FILE_ROOTS = ['refs', 'renders', 'out', 'models', 'anim'];
-// Из runs/ — только версии модели и снимки с метками; задачи и ленты — через API.
-const RUNS_FILES = /^runs\/studio\/[\w-]+\/(live|marks)\/[^/]+$/;
+// Из runs/ — только версии модели, снимки с метками и шаги улучшения модели;
+// задачи и ленты — через API.
+const RUNS_FILES = /^runs\/(studio\/[\w-]+\/(live|marks)|fix\/[0-9a-f]{12})\/[^/]+$/;
 const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(path.resolve(HERE, '..', 'package.json'), 'utf8')).version; } catch { return '?'; }
 })();
@@ -264,6 +266,18 @@ async function api(req, res, url) {
   // Скачать модель в нужном формате: тот же — файл как есть, другой — перевод
   // Blender'ом без окна (кэш в runs/export/, пока исходник не поменялся).
   // OBJ отдаётся zip'ом вместе с .mtl — иначе теряются цвета.
+  // Улучшение готовой модели: шаг, отмена шага, сброс, сохранить как новую.
+  if (parts[1] === 'fix' && m === 'POST') {
+    const b = await readBody(req);
+    try {
+      if (!parts[2]) return send(res, 200, await runFix(b));
+      if (parts[2] === 'undo') return send(res, 200, undoFix(b.sid));
+      if (parts[2] === 'drop') { dropFix(b.sid); return send(res, 200, { ok: true }); }
+      if (parts[2] === 'save') return send(res, 200, saveFix(b));
+    } catch (e) {
+      return send(res, 400, errBody(e.code ? e : new UserError('fixFail', { msg: e.message })));
+    }
+  }
   if (parts[1] === 'export' && m === 'GET') {
     const ROOT = ws();
     const rel = url.searchParams.get('path') || '';

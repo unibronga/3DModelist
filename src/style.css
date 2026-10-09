@@ -1239,3 +1239,36 @@ kbd {
 /* Отменить / повторить — в начале строки вида над моделью. */
 .hist-btns button { padding: 6px 9px; display: grid; place-items: center; }
 .hist-btns button:disabled { opacity: 0.35; cursor: default; }
+
+/* ── «Улучшить модель» у готовой модели (владелец 09.10) ──────────────── */
+.fix-field { gap: 8px; }
+.fix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fix-btn {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--text); font: inherit; font-size: 12.5px;
+  text-align: start; cursor: pointer;
+}
+.fix-btn:hover:not(:disabled) { background: var(--btn-hover-bg); color: var(--btn-hover-fg); }
+.fix-btn.on { background: var(--sel-bg); border-color: var(--sel-line); color: var(--sel-fg); }
+.fix-btn.run { border-color: var(--accent); color: var(--accent); }
+.fix-btn:disabled { opacity: 0.5; cursor: default; }
+.fix-ico { display: grid; flex: none; color: var(--text-2); }
+.fix-btn.on .fix-ico, .fix-btn.run .fix-ico { color: inherit; }
+.fix-opts, .fix-report, .fix-steps {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel-2);
+}
+.fix-opts > .btn { align-self: flex-start; }
+.fix-list { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.fix-steps .row { gap: 6px; }
+
+/* Подпись поверх окна, пока модель «сканируется». */
+.scan-label {
+  position: absolute; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 6;
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--sel-line); color: var(--text); font-size: 13px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); pointer-events: none;
+}
+.scan-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: scan-pulse 1.1s ease-in-out infinite; }
+@keyframes scan-pulse { 50% { opacity: 0.25; transform: scale(0.7); } }
+@media (prefers-reduced-motion: reduce) { .scan-dot { animation: none; } }

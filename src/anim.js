@@ -12,10 +12,10 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { writeGlb } from './glb.js';
 import { el, api, fileUrl, toast, errText, money } from './ui.js';
 import { t, has } from './i18n.js';
-import { HUMAN_POINTS, HUMAN_BONES, MIRRORED, buildHuman, centerX, mirror, pairOf, pairBone, sideOf } from './anim-rig.js';
+import { HUMAN_POINTS, HUMAN_BONES, MIRRORED, buildHuman, centerX, mirror, pairOf, pairBone, sideOf, handFingers } from './anim-rig.js';
 import { newClip, sample, setKey, deleteKey, moveKey, keyAt, keyFrames, bake } from './anim-clip.js';
 import { Timeline, inlineRename } from './timeline.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -59,6 +59,8 @@ const BEND = [
   ['LeftUpperArm', 'front', 35], ['RightUpperArm', 'front', 35],
   ['LeftLowerArm', 'front', 85], ['RightLowerArm', 'front', 85],
   ['LeftUpperLeg', 'front', 55], ['LeftLowerLeg', 'back', 85], ['RightUpperLeg', 'back', 20],
+  // Варежка: кулак — пальцы и большой палец к ладони (ладонь смотрит к телу).
+  ['LeftFingers', 'in', 80], ['RightFingers', 'in', 80], ['LeftThumb', 'in', 40], ['RightThumb', 'in', 40],
 ];
 
 // Повернуть кость вокруг оси в мире: мир = P·L → D·P·L, значит L' = (P⁻¹·D·P)·L.
@@ -328,6 +330,7 @@ export class Animator {
       this.rbones = HUMAN_BONES.map((b) => ({ ...b }));
       this.rigType = 'human';
       this.rigCx = centerX(this.markers);
+      this.addFingers({ quiet: true });            // варежки — по форме кистей, если нашлись
       this.way = 'manual';
       this.tool = 'move';
       this.saveRig();
@@ -419,6 +422,70 @@ export class Animator {
     this.fromRig();
     await this.show();
     this.onChange();
+  }
+
+  // ── пальцы варежкой ───────────────────────────────────────────────────
+  // Кисти скелета: у «Человека» — LeftHand/RightHand, у своего — выбранная
+  // концевая кость и её пара. Без пальцев кисть — последняя кость, и сжать
+  // руку нечем.
+  handBones() {
+    const leaf = (b) => b && !this.rbones.some((c) => c.parent === b.name);
+    const named = ['LeftHand', 'RightHand'].map((n) => this.rbone(n)).filter(leaf);
+    if (named.length) return named;
+    const sel = this.rbone(this.bsel);
+    if (!leaf(sel)) return [];
+    return [sel, this.rbone(pairBone(sel.name))].filter(leaf);
+  }
+
+  canAddFingers() { return this.stage === 'skeleton' && this.handBones().length > 0; }
+
+  // Точки и грани модели в её координатах — для формы кистей.
+  modelPoints() {
+    const root = this.viewer.root;
+    root.updateMatrixWorld(true);
+    const pts = [];
+    const tris = [];
+    const v = new THREE.Vector3();
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const pos = o.geometry.attributes.position;
+      const base = pts.length;
+      for (let i = 0; i < pos.count; i++) pts.push(root.worldToLocal(v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld)).toArray());
+      const idx = o.geometry.index;
+      const n = idx ? idx.count : pos.count;
+      for (let i = 0; i < n; i++) tris.push(base + (idx ? idx.getX(i) : i));
+    });
+    return { pts, tris };
+  }
+
+  addFingers({ quiet = false } = {}) {
+    const hands = this.handBones();
+    if (!hands.length) return 0;
+    const { pts, tris } = this.modelPoints();
+    let added = 0;
+    if (!quiet) this.snapshot();
+    for (const h of hands) {
+      const r = handFingers(pts, tris, this.joints[h.head], this.joints[h.tail]);
+      if (!r) continue;
+      const side = /^Left/.test(h.name) ? 'Left' : /^Right/.test(h.name) ? 'Right' : null;
+      const sfx = side ? '' : (h.name.match(/[._][LR]$/) || [''])[0];
+      const stem = side ? '' : h.name.replace(/[._][LR]$/, '');
+      const name = (part) => (side ? side + part : `${stem}${part}${sfx}`);
+      const s = side ? side[0] : null;
+      if (this.rbone(name('Fingers'))) continue;
+      // Кисть теперь кончается у костяшек — дальше пальцы.
+      this.joints[h.tail] = r.knuckle.map((x) => +x.toFixed(5));
+      const j = (k, p) => { const id = side ? `${k}.${s}` : `${k}_${h.name}`; this.joints[id] = p.map((x) => +x.toFixed(5)); return id; };
+      this.rbones.push({ name: name('Fingers'), parent: h.name, head: h.tail, tail: j('fingersEnd', r.fingersEnd) });
+      this.rbones.push({ name: name('Thumb'), parent: h.name, head: j('thumb', r.thumb), tail: j('thumbEnd', r.thumbEnd) });
+      added++;
+    }
+    if (!quiet) {
+      if (added) { this.saveRig(); toast(t('anim.fingers.added', { n: added })); } else { this.undoStack.pop(); toast(t('anim.fingers.none'), true); }
+      this.draw();
+      this.onChange();
+    }
+    return added;
   }
 
   // ── редактор скелета ──────────────────────────────────────────────────
@@ -649,7 +716,8 @@ export class Animator {
       else {
         const head = b.getWorldPosition(new THREE.Vector3());
         const dir = b.localToWorld(b.userData.tail.clone()).sub(head).normalize();
-        axis = new THREE.Vector3().crossVectors(dir, how === 'front' ? FRONT : FRONT.clone().negate());
+        const to = how === 'in' ? new THREE.Vector3(sideOf(name) === 'L' ? -1 : 1, 0, 0) : how === 'front' ? FRONT : FRONT.clone().negate();
+        axis = new THREE.Vector3().crossVectors(dir, to);
         if (axis.lengthSq() < 1e-6) axis = new THREE.Vector3(1, 0, 0);   // кость смотрит вперёд — гнём вниз
         axis.normalize();
       }
@@ -1435,7 +1503,8 @@ export class Animator {
     const label = this.agentCard.querySelector('.agent-time');
     if (!label || !this.agentJob) return;
     const s = Math.max(0, Math.round((Date.now() - this.agentJob.t0) / 1000));
-    label.textContent = t('agent.working', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` });
+    // Круг проверки: агент смотрит лист кадров с трёх сторон.
+    label.textContent = t(this.agentJob.phase === 'review' ? 'agent.reviewing' : 'agent.working', { time: `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` });
   }
 
   async sendAgent(text) {
@@ -1462,7 +1531,7 @@ export class Animator {
       this.tickAgent();
       const st = await this.api(`/agent/${job.id}`).catch(() => null);
       if (this.agentJob !== job) return;
-      if (!st || st.state === 'running') { this.pollAgent(); return; }
+      if (!st || st.state === 'running') { if (st) job.phase = st.phase; this.pollAgent(); return; }
       this.agentJob = null;
       await this.agentDone(job.clip, st);
     }, 1000);
@@ -1541,10 +1610,12 @@ export class Animator {
     try {
       const { path, file } = await this.buildExport(packId, clips);
       const fps = Math.max(...clips.map((c) => c.fps));
-      const r = await fetch(`/api/export?path=${enc(path)}&fmt=${fmt}&name=${enc(file)}&fps=${fps}`);
+      const r = await fetch(`/api/export?path=${enc(path)}&fmt=${fmt}&name=${enc(file)}&fps=${fps}&face=${enc(this.name)}`);
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw Object.assign(new Error(e.error || r.statusText), e); }
       const url = URL.createObjectURL(await r.blob());
-      const a = el('a', { href: url, download: `${file}.${fmt}` });
+      // С лицом из 3DPainter сервер отдаёт zip — имя берём из ответа.
+      const got = decodeURIComponent((/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || `${file}.${fmt}`);
+      const a = el('a', { href: url, download: got });
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { toast(errText(e), true); }
@@ -1557,7 +1628,7 @@ export class Animator {
     const gltf = await new GLTFLoader().loadAsync(fileUrl(this.st.skin.path) + '?v=' + this.st.skin.t);
     const names = [];
     gltf.scene.traverse((o) => { if (o.isBone) names.push(o.name); });
-    const buf = await new GLTFExporter().parseAsync(gltf.scene, { binary: true, animations: clips.map((c) => bake(c, names)), onlyVisible: false });
+    const buf = await writeGlb(gltf.scene, clips.map((c) => bake(c, names)));
     const pack = this.packs.find((x) => x.id === packId);
     const file = [this.name, pack ? pack.name : 'anim'].join('_').replace(/[^\p{L}\w.-]+/gu, '_');
     const { path } = await this.api('/export', { method: 'POST', body: { file, data: toBase64(buf) } });
@@ -1599,6 +1670,7 @@ export class Animator {
           el('div', { class: 'muted small anim-legend' },
             el('span', { class: 'lg l' }), t('anim.legend.l'), el('span', { class: 'lg r' }), t('anim.legend.r'))),
         this.boneList(),
+        this.canAddFingers() && field(el('button', { class: 'btn wide', title: t('tip.fingers'), onclick: () => this.addFingers() }, '✋ ' + t('anim.fingers'))),
         !!sb && field(el('div', { class: 'label' }, t('anim.bone.sel')),
           el('input', { class: 'input', value: sb.name, title: boneLabel(sb.name), onchange: (e) => this.renameBone(e.target.value) }),
           el('button', { class: 'btn danger wide', title: t('tip.boneDelete'), onclick: () => this.deleteBone() }, t('anim.bone.delete'))),

@@ -16,6 +16,7 @@ import bpy
 import bmesh
 from mathutils import Vector
 from mathutils.geometry import intersect_point_line
+from mathutils.kdtree import KDTree
 
 base, rig_path, dst, report_path = sys.argv[sys.argv.index('--') + 1:][:4]
 rig = json.load(open(rig_path, encoding='utf-8'))
@@ -93,12 +94,19 @@ total = sum(len(o.data.vertices) for o in meshes)
 auto_weights(meshes)
 missed = sum(len(unweighted(o)) for o in meshes)
 method = 'auto'
+voxel = None
 
 # ── привязка через копию ───────────────────────────────────────────────────
-# Сетка генератора разрезана по швам (плоские грани, развёртка): тысячи
-# кусков, и тепловые веса Blender на них не находят решения. Веса считаются
-# на копии — сначала со склеенными швами, если мало — на цельной оболочке
-# (Remesh вокселями), — и переносятся на модель; её вид не меняется.
+# Модель генератора — не одна оболочка, а десятки кусков: куртка, рубашка,
+# ремень, шлёвки, брюки, да ещё разрезанные по швам. Тепловые веса Blender
+# считает каждый кусок сам по себе: соседние куски (ремень и брюки под ним)
+# получают разные веса и при сгибе расходятся — дыры у пояса, оторванные
+# шлёвки (замер на Kian 13.10: 7 900 пар соседних точек расходились больше
+# чем на 1 см, до 11 см). Поэтому у такой модели веса считаются на одной
+# сплошной оболочке всего тела (Remesh вокселями), переносятся на каждую
+# деталь по ближайшей точке оболочки и сглаживаются между соседними
+# деталями — после этого расхождений больше 1 см нет (худшее 4 мм).
+# Цельная модель (один кусок) привязывается напрямую, как раньше.
 def proxy_copy():
     parts = []
     for o in meshes:
@@ -126,10 +134,31 @@ def weld(o):
     bm.free()
 
 
-def shell(o):
+def pieces(o):
+    bm = bmesh.new()
+    bm.from_mesh(o.data)
+    seen = set()
+    n = 0
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        n += 1
+        stack = [v]
+        seen.add(v.index)
+        while stack:
+            for e in stack.pop().link_edges:
+                for u in e.verts:
+                    if u.index not in seen:
+                        seen.add(u.index)
+                        stack.append(u)
+    bm.free()
+    return n
+
+
+def shell(o, div):
     md = o.modifiers.new('Shell', 'REMESH')
     md.mode = 'VOXEL'
-    md.voxel_size = max(max(o.dimensions) / 160, 0.002)
+    md.voxel_size = max(max(o.dimensions) / div, 0.002)
     md.adaptivity = 0
     with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o]):
         bpy.ops.object.modifier_apply(modifier=md.name)
@@ -157,20 +186,83 @@ def transfer(src, mapping):
             o.matrix_world = mw
 
 
-for step, mapping in (('weld', 'NEAREST'), ('shell', 'POLYINTERP_NEAREST')):
-    if missed <= total * 0.01:
-        break
-    proxy = proxy_copy()
-    weld(proxy)
-    if step == 'shell':
-        shell(proxy)
-    auto_weights([proxy])
-    left = len(unweighted(proxy))
-    if left < len(proxy.data.vertices) * 0.5:
-        transfer(proxy, mapping)
-        method = step
-        missed = sum(len(unweighted(o)) for o in meshes)
-    bpy.data.objects.remove(proxy, do_unlink=True)
+# Веса соседних точек разных деталей — к общему среднему (радиус ~1,4 см на
+# человека 1,7 м): слои одежды и пряжки двигаются вместе с тем, на чём лежат.
+def smooth_across(radius, rounds=2):
+    pts = [(o, v.index, o.matrix_world @ v.co) for o in meshes for v in o.data.vertices]
+    kd = KDTree(len(pts))
+    for i, (_, _, p) in enumerate(pts):
+        kd.insert(p, i)
+    kd.balance()
+
+    def read(o, vi):
+        groups = o.vertex_groups
+        return {groups[g.group].name: g.weight for g in o.data.vertices[vi].groups if groups[g.group].name in bone_names}
+    cur = [read(o, vi) for (o, vi, _) in pts]
+    # Точка без весов (на оболочке там пусто) — веса ближайшей точки с весами,
+    # а не ближайшей кости целиком: жёсткая кость рвала деталь на 20 см.
+    have = [i for i, w in enumerate(cur) if w]
+    if have and len(have) < len(cur):
+        kw = KDTree(len(have))
+        for n, i in enumerate(have):
+            kw.insert(pts[i][2], n)
+        kw.balance()
+        for i, w in enumerate(cur):
+            if not w:
+                cur[i] = dict(cur[have[kw.find(pts[i][2])[1]]])
+    for _ in range(rounds):
+        nxt = []
+        for i, (_, _, p) in enumerate(pts):
+            acc = {}
+            tot = 0.0
+            for (_, j, d) in kd.find_range(p, radius):
+                w = 1.0 - d / radius
+                tot += w
+                for k, x in cur[j].items():
+                    acc[k] = acc.get(k, 0.0) + x * w
+            nxt.append({k: x / tot for k, x in acc.items()} if tot else cur[i])
+        cur = nxt
+    for (o, vi, _), w in zip(pts, cur):
+        for k in bone_names:
+            g = o.vertex_groups.get(k) or o.vertex_groups.new(name=k)
+            if w.get(k, 0.0) > 1e-4:
+                g.add([vi], w[k], 'REPLACE')
+            else:
+                g.remove([vi])
+
+
+probe = proxy_copy()
+weld(probe)
+parts = pieces(probe)
+bpy.data.objects.remove(probe, do_unlink=True)
+
+if parts > 1 or missed > total * 0.01:
+    # Оболочка: подробная, пока тепловые веса на ней находятся (на слишком
+    # подробной Blender решения не находит вовсе), иначе — грубее.
+    for div in (100, 80, 64, 50, 40):
+        proxy = proxy_copy()
+        weld(proxy)
+        shell(proxy, div)
+        auto_weights([proxy])
+        ok = len(unweighted(proxy)) <= len(proxy.data.vertices) * 0.01
+        if ok:
+            transfer(proxy, 'POLYINTERP_NEAREST')
+            method, voxel = 'shell', div
+        bpy.data.objects.remove(proxy, do_unlink=True)
+        if ok:
+            break
+    if method == 'shell':
+        smooth_across(max(max(o.dimensions) for o in meshes) / 120)
+    else:
+        # Оболочка не вышла — по-старому: склеенная копия, затем ближайшая кость.
+        proxy = proxy_copy()
+        weld(proxy)
+        auto_weights([proxy])
+        if len(unweighted(proxy)) < len(proxy.data.vertices) * 0.5:
+            transfer(proxy, 'NEAREST')
+            method = 'weld'
+        bpy.data.objects.remove(proxy, do_unlink=True)
+    missed = sum(len(unweighted(o)) for o in meshes)
 
 # ── ничья вершина — ближайшей кости ────────────────────────────────────────
 segs = [(b.name, arm.matrix_world @ b.head_local, arm.matrix_world @ b.tail_local) for b in data.bones]
@@ -205,5 +297,5 @@ view.objects.active = arm
 bpy.ops.export_scene.gltf(filepath=dst, export_format='GLB', export_yup=True,
                           export_skins=True, export_animations=False)
 
-json.dump({'method': method, 'verts': total, 'missed': missed, 'fixed': fixed,
+json.dump({'method': method, 'voxel': voxel, 'parts': parts, 'verts': total, 'missed': missed, 'fixed': fixed,
            'bones': len(bone_names)}, open(report_path, 'w', encoding='utf-8'))

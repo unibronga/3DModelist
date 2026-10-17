@@ -9,6 +9,7 @@
 
 const { app, BrowserWindow, Menu, shell, ipcMain, dialog, nativeTheme } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 
 // Данные приложения: ~/Library/Application Support/3DModelist — там же их
@@ -193,6 +194,30 @@ ipcMain.handle('open-path', async (_e, p) => {
   if (!root || !(abs === root || abs.startsWith(root + path.sep))) return false;
   const err = await shell.openPath(abs);
   return !err;
+});
+
+// Проект 3DPainter из рабочей папки — копией туда, куда скажет человек
+// (по умолчанию — откуда его открывали: «Сохранить» поверх своего файла).
+ipcMain.handle('save-paint', async (_e, rel, defaultPath) => {
+  const { load } = await import(pathToFileURL(path.join(__dirname, '..', 'server', 'settings.mjs')).href);
+  const root = load().workspace;
+  const src = path.resolve(root || '/', String(rel || ''));
+  if (!root || !src.startsWith(root + path.sep) || !/\.3dpaint$/i.test(src) || !fs.existsSync(src)) return null;
+  const def = typeof defaultPath === 'string' && path.isAbsolute(defaultPath) ? defaultPath : path.join(app.getPath('documents'), path.basename(src));
+  const r = await dialog.showSaveDialog(win, { defaultPath: def, filters: [{ name: '3DPainter', extensions: ['3dpaint'] }] });
+  if (r.canceled || !r.filePath) return null;
+  const dst = /\.3dpaint$/i.test(r.filePath) ? r.filePath : r.filePath + '.3dpaint';
+  fs.copyFileSync(src, dst + '.part');
+  fs.renameSync(dst + '.part', dst);
+  return dst;
+});
+
+// Открыть проект в 3DPainter (macOS: open -a; программа сама ловит open-file).
+ipcMain.handle('open-in-painter', async (_e, abs) => {
+  const f = String(abs || '');
+  if (!path.isAbsolute(f) || !/\.3dpaint$/i.test(f) || !fs.existsSync(f)) return false;
+  if (process.platform !== 'darwin') return !(await shell.openPath(f));
+  return new Promise((ok) => require('node:child_process').execFile('open', ['-a', '3DPainter', f], (err) => ok(!err)));
 });
 
 ipcMain.handle('pick-folder', async () => {

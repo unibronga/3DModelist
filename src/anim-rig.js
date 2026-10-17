@@ -59,8 +59,11 @@ export function buildHuman(markers, box) {
   j.head = [cx, C[1], C[2]];
   j.headTop = [cx, top, C[2]];
 
-  // Точки стороны, куда их поставили; вторая — зеркало.
-  const sides = markers.wrist[0] >= cx ? { L: (p) => p, R: (p) => mirror(p, cx) } : { L: (p) => mirror(p, cx), R: (p) => p };
+  // Каждая точка — на свою сторону по своему месту: запястье могли поставить
+  // на левой руке, а колено — на правой ноге (так и было у Kian 13.10, и ноги
+  // вышли подписаны наоборот). Левая сторона персонажа — +X.
+  const toL = (p) => (p[0] >= cx ? p : mirror(p, cx));
+  const sides = { L: (p) => toL(p), R: (p) => mirror(toL(p), cx) };
   for (const s of ['L', 'R']) {
     const f = sides[s];
     const W = f(markers.wrist);
@@ -96,3 +99,65 @@ export const pairOf = (id) => (/[._]L$/.test(id) ? id.slice(0, -1) + 'R' : /[._]
 export const pairBone = (name) => (/^Left/.test(name) ? name.replace(/^Left/, 'Right') : /^Right/.test(name) ? name.replace(/^Right/, 'Left') : pairOf(name));
 
 export { lerp };
+
+// ── пальцы варежкой ─────────────────────────────────────────────────────────
+// Две кости на кисть: четыре пальца вместе (Fingers) и большой (Thumb) — хватит,
+// чтобы сжать кулак и взять предмет. Места — по форме самой кисти: точки
+// модели за запястьем, одним куском с ладонью. Кончики пальцев — дальше всего
+// по оси кисти, большой палец — дальше всего вперёд (в A-позе ладони смотрят
+// к телу, большие пальцы — вперёд, на +Z).
+//
+// pts — точки модели [x,y,z], tris — тройки номеров точек (для кусков),
+// wrist/handEnd — сустав запястья и прежний конец кисти.
+// Возвращает { knuckle, fingersEnd, thumb, thumbEnd } или null.
+export function handFingers(pts, tris, wrist, handEnd) {
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const L0 = len(sub(handEnd, wrist));
+  if (!(L0 > 0)) return null;
+  const axis = norm(sub(handEnd, wrist));
+  const tOf = (p) => dot(sub(p, wrist), axis);
+  const radial = (p) => len(sub(sub(p, wrist), mul(axis, tOf(p))));
+  // Область кисти: за запястьем, не дальше трёх длин кисти, недалеко от оси.
+  const inRegion = (p) => { const tt = tOf(p); return tt > -0.05 * L0 && tt < 3 * L0 && radial(p) < 1.4 * L0; };
+  // Куски — по общим точкам (сетка разрезана по швам: склеиваем по месту).
+  const key = (p) => p.map((v) => Math.round(v * 2000)).join(',');
+  const id = new Map();
+  const ids = pts.map((p) => { const k = key(p); if (!id.has(k)) id.set(k, id.size); return id.get(k); });
+  const parent = Array.from({ length: id.size }, (_, i) => i);
+  const find = (a) => { while (parent[a] !== a) a = parent[a] = parent[parent[a]]; return a; };
+  for (let i = 0; i < tris.length; i += 3) {
+    const [a, b, c] = [tris[i], tris[i + 1], tris[i + 2]];
+    if (!inRegion(pts[a]) || !inRegion(pts[b]) || !inRegion(pts[c])) continue;
+    const ra = find(ids[a]);
+    parent[find(ids[b])] = ra;
+    parent[find(ids[c])] = ra;
+  }
+  // Ладонь — кусок у середины кисти.
+  const palm = add(wrist, mul(axis, L0 * 0.5));
+  let best = -1, bd = Infinity;
+  pts.forEach((p, i) => { if (inRegion(p)) { const d = len(sub(p, palm)); if (d < bd) { bd = d; best = i; } } });
+  if (best < 0) return null;
+  const root = find(ids[best]);
+  const hand = pts.filter((p, i) => inRegion(p) && find(ids[i]) === root);
+  if (hand.length < 12) return null;
+  const T = Math.max(...hand.map(tOf));
+  if (!(T > 0.3 * L0)) return null;
+  const mean = (list) => mul(list.reduce((s, p) => add(s, p), [0, 0, 0]), 1 / list.length);
+  const slab = (a, b) => { const s = hand.filter((p) => { const tt = tOf(p) / T; return tt >= a && tt <= b; }); return s.length ? s : null; };
+  const knuckleSlab = slab(0.42, 0.56);
+  const tipSlab = slab(0.88, 1);
+  if (!knuckleSlab || !tipSlab) return null;
+  const knuckle = mean(knuckleSlab);
+  const fingersEnd = mean(tipSlab);
+  // Большой палец — вперёд, поперёк оси кисти.
+  let f = [0, 0, 1];
+  f = norm(sub(f, mul(axis, dot(f, axis))));
+  const side = slab(0.08, 0.8) || hand;
+  const thumbEnd = side.reduce((m, p) => (dot(p, f) > dot(m, f) ? p : m), side[0]);
+  const baseSlab = slab(0.05, 0.3) || side;
+  const baseC = mean(baseSlab);
+  const reach = Math.max(...baseSlab.map((p) => dot(sub(p, baseC), f)));
+  const thumb = add(baseC, mul(f, reach * 0.6));
+  if (len(sub(thumbEnd, thumb)) < 0.15 * L0) return null;
+  return { knuckle, fingersEnd, thumb, thumbEnd };
+}

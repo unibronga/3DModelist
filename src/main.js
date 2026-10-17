@@ -16,6 +16,7 @@ import { ViewCube } from './viewcube.js';
 import { initTooltips } from './tooltip.js';
 import { Tools } from './tools.js';
 import { Fixer } from './fix.js';
+import { paintToGlb, paintModelWithRig, isPaint, toBase64 } from './painter.js';
 
 // Короткий markdown агента: абзацы, списки, **жирный**, `код`, пути проекта — ссылками.
 function md(src) {
@@ -464,7 +465,7 @@ async function downloadAs(fmt) {
   const slug = S.task?.slug || S.libSel;
   if (!same) toast(t('dl.preparing', { fmt: fmt.toUpperCase() }));
   try {
-    const r = await fetch(`/api/export?path=${encodeURIComponent(src)}&fmt=${fmt}&name=${encodeURIComponent(slug)}`);
+    const r = await fetch(`/api/export?path=${encodeURIComponent(src)}&fmt=${fmt}&name=${encodeURIComponent(slug)}${S.libSel ? '&face=' + encodeURIComponent(S.libSel) : ''}`);
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw Object.assign(new Error(e.error || r.statusText), e); }
     const name = decodeURIComponent((/filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '') || [])[1] || `${slug}.${fmt}`);
     const url = URL.createObjectURL(await r.blob());
@@ -1465,6 +1466,7 @@ function applyUi(ui = {}) {
 // ── строка меню, как в 3DPainter ──────────────────────────────────────────
 const MOD = navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+';
 const host = window.modelist || null;
+let paintBusy = null;            // 3DPainter: 'open' | 'save', пока идёт
 async function saveUi(patch) {
   await api('/settings', { method: 'PATCH', body: { ui: patch } }).catch((e) => toast(errText(e), true));
 }
@@ -1490,6 +1492,8 @@ const menuBar = new MenuBar($('#menubar'), [
   { title: () => t('menu.file'), items: [
     { label: () => t('side.new'), hint: MOD + 'N', action: () => selectTask(null) },
     { label: () => t('menu.openModel'), action: () => $('#open-model').click() },
+    { label: () => t('menu.openPaint'), action: () => $('#open-paint').click() },
+    { label: () => t('menu.savePaint'), disabled: () => !libModel()?.paint || !!paintBusy, action: () => saveToPainter() },
     { label: () => t('side.library') + '…', action: openLibrary },
     '-',
     { label: () => t('menu.showWorkspace'), disabled: () => !H.health?.workspace?.exists, action: () => reveal('') },
@@ -1560,10 +1564,83 @@ const menuBar = new MenuBar($('#menubar'), [
 onLangChange(() => menuBar.relabel());
 
 // Открыть модель с диска — просто посмотреть, в рабочую папку она не копируется.
+// ── 3DPainter: открыть его проект готовой моделью, сохранить обратно ──────
+// Слои сводит страница (src/painter.js), модель кладёт сервер (server/painter.mjs).
+async function openPaint(f) {
+  if (!f || paintBusy) return;
+  paintBusy = 'open';
+  toast(t('paint.opening', { name: f.name }));
+  try {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const source = host?.pathOf?.(f) || null;
+    const { name } = await api('/painter/name', { method: 'POST', body: { file: f.name, source } });
+    const r = await paintToGlb(bytes, name);
+    const res = await api('/painter/open', { method: 'POST', body: {
+      file: f.name, source, paint: source ? undefined : toBase64(bytes), glb: toBase64(r.glb),
+      extras: r.extras.map((x) => ({ name: x.name, data: toBase64(x.bytes) })),
+      // Скелет и движения из файла — сервер возьмёт их, если своих у модели нет.
+      restore: r.restore && { ...r.restore, packs: [{ id: 'p' + Date.now().toString(36), name: t('anim.pack.n', { n: 1 }) }] },
+    } });
+    await refreshLibrary();
+    if (S.libSel === res.name && S.libTab === 'anim') animator.close();
+    await selectLibrary(res.name);
+    toast(res.restored ? t('paint.restored', { name: res.name, n: res.clips }) : t(res.rebound ? 'paint.openedAnim' : 'paint.opened', { name: res.name }));
+  } catch (e) {
+    toast(errText(e), true);
+  }
+  paintBusy = null;
+}
+
+// Сохранить в 3DPainter: модель проекта получает скелет и движения, слои и
+// лицо остаются как были. Без скелета сохранять нечего — проект и так тот же.
+async function saveToPainter() {
+  const m = libModel();
+  if (!m?.paint || paintBusy) return;
+  paintBusy = 'save';
+  try {
+    if (animator.name === m.name) await animator.flushClip();
+    const st = await api(`/anim/${encodeURIComponent(m.name)}`);
+    if (!st.skin) { toast(t('paint.noSkin'), true); return; }
+    toast(t('paint.saving'));
+    const bytes = new Uint8Array(await (await fetch(fileUrl(m.paint) + '?v=' + Date.now())).arrayBuffer());
+    const { glb } = await paintModelWithRig(bytes, fileUrl(st.skin.path) + '?v=' + st.skin.t, st.turn || 0, st.clips || [], st.rig);
+    const info = await api(`/painter/model/${encodeURIComponent(m.name)}/save`, { method: 'POST', body: { glb: toBase64(glb) } });
+    if (host?.savePaint) {
+      const where = await host.savePaint(info.project, info.saved || info.source || null);
+      if (!where) { toast(t('paint.cancelled')); return; }
+      await api(`/painter/model/${encodeURIComponent(m.name)}/saved`, { method: 'POST', body: { path: where } });
+      toast(t('paint.saved', { path: where }));
+      if (confirm(t('paint.openInPainter'))) host.openInPainter(where);
+    } else {
+      download(info.project);
+    }
+  } catch (e) {
+    toast(errText(e), true);
+  } finally {
+    paintBusy = null;
+  }
+}
+// Для проверок в собранном окне (MODELIST_SCREENSHOT_JS): тот же путь, что у меню.
+Object.assign(window.__modelist, { openPaint, saveToPainter, selectLibrary, setLibTab, paintModelWithRig, toBase64 });
+$('#open-paint').addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  openPaint(f);
+});
+// Проект 3DPainter можно просто бросить на окно.
+document.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === 'file')) e.preventDefault(); });
+document.addEventListener('drop', (e) => {
+  if (e.defaultPrevented || !e.dataTransfer?.files?.length) return;
+  e.preventDefault();                       // иначе окно уйдёт на сам файл
+  const f = [...e.dataTransfer.files].find((x) => isPaint(x.name));
+  if (f) openPaint(f);
+});
+
 $('#open-model').addEventListener('change', async (e) => {
   const f = e.target.files[0];
   e.target.value = '';
   if (!f) return;
+  if (isPaint(f.name)) { openPaint(f); return; }
   S.autoFollow = false;
   S.shown = 'local:' + f.name;
   $('#empty').hidden = true;

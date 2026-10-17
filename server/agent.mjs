@@ -325,6 +325,7 @@ export function testClaude(model = 'haiku') {
           p.kill('SIGTERM');
         }
         if (m.type === 'rate_limit_event') out.limit5h = m.rate_limit_info?.unifiedWindows?.five_hour?.utilization;
+        if (m.session_id) out.session = m.session_id;
         if (m.type === 'result') {
           out.ok = !m.is_error;
           out.reply = m.result;
@@ -351,14 +352,19 @@ export function testClaude(model = 'haiku') {
 // Движение для вкладки «Анимации»: один ответ Claude без инструментов — текст
 // и блок JSON с ключами. Пустая временная папка: CLAUDE.md рабочей папки ему
 // не нужен. onSpawn(proc) — чтобы «Стоп» мог погасить процесс.
-export function runAnimAgent({ prompt, model = 'opus', effort = 'high', onSpawn = () => {} }) {
+// Агент-аниматор. Своя папка (cwd) — для листа кадров: агент смотрит его
+// инструментом Read и только его; писать и запускать ничего не может.
+// resume — продолжить тот же разговор (круг проверки), maxTurns — с Read нужно 3+.
+export function runAnimAgent({ prompt, model = 'opus', effort = 'high', onSpawn = () => {}, cwd = null, resume = null, maxTurns = 2 }) {
   return new Promise((resolve) => {
     let env;
     let bin;
     try { env = claudeEnv(); bin = claudeBin(); } catch (e) { resolve({ ok: false, error: e.message, code: e.code }); return; }
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'modelist-anim-'));
-    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', '2',
+    const own = !cwd;
+    if (own) cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'modelist-anim-'));
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--model', model, '--max-turns', String(maxTurns),
       '--disallowedTools', 'Bash', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Agent', 'Artifact', 'ArtifactComments', 'ArtifactData'];
+    if (resume) args.push('--resume', resume);
     if (!/haiku/.test(model)) args.push('--effort', effort);
     const p = spawn(bin, args, { cwd, env, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
     onSpawn(p);
@@ -380,6 +386,7 @@ export function runAnimAgent({ prompt, model = 'opus', effort = 'high', onSpawn 
           out.error = a.code; out.code = a.code; out.params = a.params;
           try { process.kill(-p.pid, 'SIGTERM'); } catch { /* вышел */ }
         }
+        if (m.session_id) out.session = m.session_id;
         if (m.type === 'result') {
           out.ok = !m.is_error;
           out.reply = m.result;
@@ -392,7 +399,7 @@ export function runAnimAgent({ prompt, model = 'opus', effort = 'high', onSpawn 
     p.on('error', (e) => { clearTimeout(timer); resolve({ ok: false, error: e.message }); });
     p.on('close', (code, signal) => {
       clearTimeout(timer);
-      fs.rmSync(cwd, { recursive: true, force: true });
+      if (own) fs.rmSync(cwd, { recursive: true, force: true });
       if (signal && !out.error) { out.error = 'stopped'; out.code = 'animAgentStopped'; }
       if (!out.ok && !out.error) {
         out.error = err.trim().split('\n').filter((l) => !/connectors are disabled/.test(l)).slice(-2).join(' ');

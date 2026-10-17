@@ -15,6 +15,8 @@ import { library } from './library.mjs';
 import { load, exists } from './settings.mjs';
 import { UserError } from './errors.mjs';
 import { runAnimAgent } from './agent.mjs';
+import { bakeGlb, poseChecks } from './anim-pose.mjs';
+import os from 'node:os';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const py = (name) => fs.readFileSync(path.join(HERE, 'py', name), 'utf8');
@@ -48,9 +50,58 @@ function fileInfo(abs) {
 // Одно задание Blender на модель за раз.
 const busy = new Map();
 
+// Скелет «Человека», где кости подписаны не своей стороной (Left стоит на −X):
+// так строил «Человек по точкам» до 0.8.3, если запястье и колено ставили на
+// разных сторонах. Имена меняются местами везде — скелет, модель с костями,
+// ключи движений; сами кости и движения не меняются. Левая сторона — +X.
+function fixSides(name) {
+  const d = dirOf(name);
+  const rig = readJson(path.join(d, 'rig.json'));
+  if (!rig || rig.type !== 'human' || !Array.isArray(rig.bones)) return;
+  const cx = Number.isFinite(rig.cx) ? rig.cx : 0;
+  const sideAt = (id) => { const p = rig.joints[id]; return !p || Math.abs(p[0] - cx) < 0.01 ? null : p[0] > cx ? 'Left' : 'Right'; };
+  const other = (n) => (/^Left/.test(n) ? n.replace(/^Left/, 'Right') : n.replace(/^Right/, 'Left'));
+  const wrong = new Set();
+  for (const b of rig.bones) {
+    const m = /^(Left|Right)/.exec(b.name);
+    const s = m && (sideAt(b.head) || sideAt(b.tail));
+    if (m && s && s !== m[1]) { wrong.add(b.name); wrong.add(other(b.name)); }
+  }
+  if (!wrong.size) return;
+  const map = new Map([...wrong].map((n) => [n, other(n)]));
+  const ren = (n) => map.get(n) ?? n;
+  // Точки тех же костей: .L ↔ .R по месту.
+  const jmap = new Map();
+  for (const b of rig.bones) {
+    if (!wrong.has(b.name)) continue;
+    for (const id of [b.head, b.tail]) {
+      const m = /^(.*)\.(L|R)$/.exec(id);
+      const s = sideAt(id);
+      if (m && s && s[0] !== m[2]) jmap.set(id, `${m[1]}.${m[2] === 'L' ? 'R' : 'L'}`);
+    }
+  }
+  const jr = (id) => jmap.get(id) ?? id;
+  rig.bones = rig.bones.map((b) => ({ ...b, name: ren(b.name), parent: b.parent && ren(b.parent), head: jr(b.head), tail: jr(b.tail) }));
+  rig.joints = Object.fromEntries(Object.entries(rig.joints).map(([k, v]) => [jr(k), v]));
+  writeJson(path.join(d, 'rig.json'), rig);
+  const skin = path.join(d, 'skin.glb');
+  if (fs.existsSync(skin)) renameManyInGlb(skin, map);
+  let files = [];
+  try { files = fs.readdirSync(path.join(d, 'clips')).filter((f) => f.endsWith('.json')); } catch { /* движений нет */ }
+  for (const f of files) {
+    const p = path.join(d, 'clips', f);
+    const c = readJson(p);
+    if (!c?.keys) continue;
+    c.keys = Object.fromEntries(Object.entries(c.keys).map(([k, v]) => [ren(k), v]));
+    if (c.undo?.keys) c.undo.keys = Object.fromEntries(Object.entries(c.undo.keys).map(([k, v]) => [ren(k), v]));
+    writeJson(p, c);
+  }
+}
+
 export function state(name) {
   const m = model(name);
   const d = dirOf(name);
+  try { fixSides(name); } catch { /* скелет кривой — покажем как есть */ }
   const clips = [];
   try {
     for (const f of fs.readdirSync(path.join(d, 'clips'))) {
@@ -119,6 +170,46 @@ export function prepare(name, turn = 'auto') {
     if (now !== was) for (const f of ['skin.glb', 'skin.json']) fs.rmSync(path.join(d, f), { force: true });
     return state(name);
   });
+}
+
+// Модель перекрасили (проект 3DPainter открыт снова): основа — заново с тем же
+// поворотом, привязка — заново к тому же скелету; движения не трогаются.
+// Анимации у модели ещё не было — делать нечего. Возвращает, пересобрано ли.
+export async function repaint(name) {
+  const m = model(name);
+  const d = dirOf(name);
+  const was = readJson(path.join(d, 'base.json'), null);
+  if (!was || !fs.existsSync(path.join(d, 'base.glb'))) return false;
+  const bound = fs.existsSync(path.join(d, 'skin.glb')) && fs.existsSync(path.join(d, 'rig.json'));
+  await job(name, 'prepare', async () => {
+    await runPy('anim_base.py', [path.join(ws(), mainFile(m)), path.join(d, 'base.glb'), String(was.turn ?? 0), path.join(d, 'base.json')], 120000);
+    if (!bound) return;
+    const tmp = path.join(d, 'skin.tmp.glb');
+    await runPy('anim_rig.py', [path.join(d, 'base.glb'), path.join(d, 'rig.json'), tmp, path.join(d, 'skin.json')]);
+    fs.renameSync(tmp, path.join(d, 'skin.glb'));
+  });
+  return true;
+}
+
+// Скелет и движения из проекта 3DPainter, сохранённого студией (страница
+// собрала их из файла, src/painter.js): основа с тем же поворотом, скелет,
+// движения, пак, привязка. Свой скелет у модели уже есть — он главнее.
+export async function restore(name, data = {}) {
+  const m = model(name);
+  const d = dirOf(name);
+  if (fs.existsSync(path.join(d, 'rig.json')) || !data.rig) return false;
+  const turn = Number.isInteger(data.turn) ? ((data.turn % 360) + 360) % 360 : 0;
+  fs.mkdirSync(d, { recursive: true });
+  await job(name, 'prepare', () => runPy('anim_base.py', [path.join(ws(), mainFile(m)), path.join(d, 'base.glb'), String(turn), path.join(d, 'base.json')], 120000));
+  saveRig(name, data.rig);
+  const clips = Array.isArray(data.clips) ? data.clips : [];
+  if (clips.length) {
+    const packs = Array.isArray(data.packs) && data.packs.length ? data.packs : [{ id: 'p1', name: 'Pack 1' }];
+    savePacks(name, packs);
+    for (const c of clips) saveClip(name, c.id, { ...c, pack: packs[0].id });
+  }
+  await bind(name);
+  return true;
 }
 
 // Поворот точки glTF (Y вверх) так же, как Blender повернул модель вокруг
@@ -251,11 +342,13 @@ export function renameBone(name, { from, to } = {}) {
 
 // GLB: заголовок 12 байт, кусок JSON (длина, тип, текст с пробелами до
 // кратного 4), кусок BIN. Меняем имя узла в JSON, BIN не трогаем.
-function renameInGlb(file, from, to) {
+function renameInGlb(file, from, to) { renameManyInGlb(file, new Map([[from, to]])); }
+
+function renameManyInGlb(file, map) {
   const buf = fs.readFileSync(file);
   const len = buf.readUInt32LE(12);
   const json = JSON.parse(buf.subarray(20, 20 + len).toString('utf8'));
-  for (const n of json.nodes || []) if (n.name === from) n.name = to;
+  for (const n of json.nodes || []) if (map.has(n.name)) n.name = map.get(n.name);
   let text = Buffer.from(JSON.stringify(json), 'utf8');
   text = Buffer.concat([text, Buffer.alloc((4 - (text.length % 4)) % 4, 0x20)]);
   const rest = buf.subarray(20 + len);
@@ -306,6 +399,25 @@ function chatAdd(name, clipId, row) {
   writeJson(chatFile(name, clipId), log.slice(-60));
 }
 
+// Правила аниматора — отдельным файлом (server/anim-guide.md): их проще дополнять.
+const guide = () => { try { return fs.readFileSync(path.join(HERE, 'anim-guide.md'), 'utf8').trim(); } catch { return ''; } };
+
+// Числа позы покоя, которые агенту иначе пришлось бы угадывать: насколько
+// разведены руки, есть ли кости пальцев.
+function restNotes(ctx) {
+  const b = (n) => ctx.bones.find((x) => x.name === n);
+  const out = [];
+  const arm = b('LeftUpperArm');
+  if (arm) {
+    const deg = Math.round((Math.atan2(arm.tail[0] - arm.head[0], arm.head[1] - arm.tail[1]) * 180) / Math.PI);
+    const down = Math.max(0, deg - 8);
+    out.push(`В покое плечо отведено от тела на ${deg}° (A-поза). Опустить руки вдоль тела: LeftUpperArm rz ≈ −${down}°, RightUpperArm rz ≈ +${down}° (к этому добавляй мах вперёд-назад по rx).`);
+  }
+  const fingers = ctx.bones.filter((x) => /Fingers|Thumb/.test(x.name)).map((x) => x.name);
+  if (fingers.length) out.push(`Кости пальцев: ${fingers.join(', ')}. В покое ладони смотрят к телу: сжать кисть — левые Fingers/Thumb rz < 0, правые rz > 0.`);
+  return out.join('\n');
+}
+
 function agentPrompt(ctx, clip, message, history) {
   const f3 = (v) => v.map((x) => +Number(x).toFixed(3));
   const bones = ctx.bones.map((b) => `- ${b.name}${b.parent ? ` (родитель ${b.parent})` : ' (корень)'} — «${b.label}», от ${JSON.stringify(f3(b.head))} до ${JSON.stringify(f3(b.tail))}`).join('\n');
@@ -333,6 +445,10 @@ ${bones}
 - Длина по умолчанию — как у нынешнего движения (${clip.frames} кадров, ${clip.fps} к/с); меняй, если просят или так нужно.
 - Движение живое: противоход рук и ног при шаге и беге, перенос веса, лёгкая работа корпуса и головы; ступни не проходят сквозь пол.
 - Правка («сделай плавнее», «поправь руку») — меняй только то, о чём просят, остальное оставь как есть, и верни движение целиком.
+
+${restNotes(ctx)}
+
+${guide()}
 
 Нынешнее движение «${clip.name}» (${clip.frames} кадров, ${clip.fps} к/с, по кругу: ${clip.loop ? 'да' : 'нет'}):
 ${now}
@@ -387,6 +503,91 @@ function motionToKeys(motion, ctx) {
   return keys;
 }
 
+// Ход агента: движение → лист кадров с трёх сторон и замеры → агент смотрит
+// и правит, пока не скажет, что всё хорошо (не больше REVIEWS кругов).
+// Каждый круг — тот же разговор (--resume): агент помнит, что делал.
+const REVIEWS = 2;
+const sheetFrames = (c) => {
+  const n = c.frames;
+  const at = c.loop ? [0, n / 4, n / 2, (3 * n) / 4] : [0, n / 3, (2 * n) / 3, n];
+  return [...new Set(at.map((x) => Math.round(x)))];
+};
+
+async function runMotion({ name, d, clipId, clip, ctx, job, prompt, model }) {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'modelist-anim-'));
+  const file = path.join(d, 'clips', clipId + '.json');
+  let session = null;
+  let cost = 0;
+  let undoSaved = false;
+  const ask = async (text, maxTurns) => {
+    const r = await runAnimAgent({ prompt: text, model, cwd, resume: session, maxTurns, onSpawn: (p) => { job.proc = p; } });
+    job.proc = null;
+    if (r.session) session = r.session;
+    if (r.cost) cost += r.cost;
+    return r;
+  };
+  const apply = (motion) => {
+    const cur = readJson(file) || clip;
+    if (!undoSaved) { cur.undo = { keys: cur.keys, frames: cur.frames, fps: cur.fps, loop: cur.loop }; undoSaved = true; }
+    Object.assign(cur, { frames: motion.frames, fps: motion.fps, loop: motion.loop, keys: motionToKeys(motion, ctx) });
+    writeJson(file, cur);
+    return cur;
+  };
+  const say = (reply) => String(reply || '').split('```')[0].trim().slice(0, 800);
+  try {
+    let r = await ask(prompt, 2);
+    let motion = r.ok ? parseMotion(r.reply, ctx, clip) : null;
+    if (!motion) {
+      job.state = 'error';
+      job.error = r.ok ? { code: 'animAgentJson' } : { code: r.code || 'animAgentFail', params: r.params || { msg: String(r.error || '').slice(0, 300) } };
+      chatAdd(name, clipId, { role: 'error', code: job.error.code, params: job.error.params, text: r.ok ? String(r.reply || '').slice(0, 600) : '' });
+      return;
+    }
+    let cur = apply(motion);
+    const said = [say(r.reply)];
+    // Проверка глазами: без привязанной модели или Blender'а — просто без неё.
+    const skin = path.join(d, 'skin.glb');
+    const rig = readJson(path.join(d, 'rig.json'));
+    for (let round = 1; round <= REVIEWS && fs.existsSync(skin) && rig && !job.stopReq; round++) {
+      job.phase = 'review';
+      const frames = sheetFrames(cur);
+      const glb = path.join(cwd, 'motion.glb');
+      const png = path.join(cwd, `sheet_${round}.png`);
+      try {
+        bakeGlb(skin, cur, glb);
+        await runPy('anim_sheet.py', [glb, png, frames.join(',')], 180000);
+      } catch { break; }
+      let checks = [];
+      try { checks = poseChecks(skin, cur, rig, Number(ctx.floor) || 0); } catch { /* замеры — подсказка, не обязаловка */ }
+      r = await ask(reviewPrompt(png, frames, checks, cur), 4);
+      if (!r.ok || job.stopReq) break;
+      const fix = /```/.test(r.reply || '') ? parseMotion(r.reply, ctx, cur) : null;
+      said.push(say(r.reply));
+      if (!fix) break;                       // агент доволен — движение остаётся
+      cur = apply(fix);
+    }
+    job.cost = load().claude.mode === 'api' ? cost : undefined;   // по подписке — только оценка, не показываем
+    job.reply = said.filter(Boolean).join('\n\n').slice(0, 1600);
+    job.state = 'done';
+    chatAdd(name, clipId, { role: 'agent', text: job.reply, cost: job.cost });
+  } finally {
+    job.phase = null;
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+}
+
+function reviewPrompt(png, frames, checks, clip) {
+  return `Вот твоё движение глазами — лист кадров: ${png}
+Открой его инструментом Read. Строки сверху вниз — кадры ${frames.join(', ')} из ${clip.frames}; столбцы слева направо — спереди, сбоку (правый бок персонажа, он смотрит вправо), сзади. Серая плоскость — пол.
+
+Замеры позы по всем кадрам:
+${checks.length ? checks.map((x) => '- ' + x).join('\n') : '- нет'}
+
+Проверь движение по своему списку правил — особенно вид спереди и сзади: руки вдоль тела, а не разведены; ноги под тазом, не в раскорячку; стопы на полу; суставы гнутся в своих пределах; противоход рук и ног.
+- Всё хорошо — ответь одной-двумя фразами, что проверил, без блока json.
+- Есть что поправить — исправь и верни движение целиком тем же блоком \`\`\`json, а перед ним одной-двумя фразами скажи, что поправил.`;
+}
+
 export function agentStart(name, body = {}) {
   model(name);
   const d = dirOf(name);
@@ -401,36 +602,16 @@ export function agentStart(name, body = {}) {
   const id = 'a' + Date.now().toString(36);
   const job = { id, name, clip: clipId, state: 'running', t0: Date.now() };
   jobs.set(id, job);
-  runAnimAgent({
-    prompt: agentPrompt(ctx, clip, message, history),
-    model: /^[\w.:-]{1,80}$/.test(body.model || '') ? body.model : 'opus',
-    onSpawn: (p) => { job.proc = p; },
-  }).then((r) => {
-    job.proc = null;
-    // По подписке денег не списывается — сумма из claude только оценка, не показываем.
-    job.cost = load().claude.mode === 'api' ? r.cost : undefined;
-    const motion = r.ok ? parseMotion(r.reply, ctx, clip) : null;
-    if (!motion) {
-      job.state = 'error';
-      job.error = r.ok ? { code: 'animAgentJson' } : { code: r.code || 'animAgentFail', params: r.params || { msg: String(r.error || '').slice(0, 300) } };
-      chatAdd(name, clipId, { role: 'error', code: job.error.code, params: job.error.params, text: r.ok ? String(r.reply || '').slice(0, 600) : '' });
-      return;
-    }
-    const cur = readJson(path.join(d, 'clips', clipId + '.json')) || clip;
-    cur.undo = { keys: cur.keys, frames: cur.frames, fps: cur.fps, loop: cur.loop };
-    Object.assign(cur, { frames: motion.frames, fps: motion.fps, loop: motion.loop, keys: motionToKeys(motion, ctx) });
-    writeJson(path.join(d, 'clips', clipId + '.json'), cur);
-    job.reply = String(r.reply || '').split('```')[0].trim().slice(0, 800);
-    job.state = 'done';
-    chatAdd(name, clipId, { role: 'agent', text: job.reply, cost: job.cost });
-  });
+  const modelName = /^[\w.:-]{1,80}$/.test(body.model || '') ? body.model : 'opus';
+  runMotion({ name, d, clipId, clip, ctx, job, prompt: agentPrompt(ctx, clip, message, history), model: modelName })
+    .catch((e) => { job.state = 'error'; job.error = { code: 'animAgentFail', params: { msg: String(e.message || e).slice(0, 300) } }; chatAdd(name, clipId, { role: 'error', code: job.error.code, params: job.error.params }); });
   return { job: id };
 }
 
 export function agentJob(name, id) {
   const j = jobs.get(id);
   if (!j || j.name !== name) throw new UserError('animBadClip');
-  return { id: j.id, clip: j.clip, state: j.state, reply: j.reply, error: j.error, cost: j.cost, t0: j.t0 };
+  return { id: j.id, clip: j.clip, state: j.state, phase: j.phase || null, reply: j.reply, error: j.error, cost: j.cost, t0: j.t0 };
 }
 
 // Что сейчас делает агент по этой модели (страницу могли закрыть и открыть).
@@ -441,6 +622,7 @@ export function agentRunning(name) {
 export function agentStop(name, id) {
   const j = jobs.get(id);
   if (!j || j.name !== name) throw new UserError('animBadClip');
+  j.stopReq = true;                     // круг проверки дальше не идёт
   if (j.proc) { try { process.kill(-j.proc.pid, 'SIGTERM'); } catch { /* уже вышел */ } }
   return agentJob(name, id);
 }

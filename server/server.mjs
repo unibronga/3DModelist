@@ -24,6 +24,7 @@ import * as settings from './settings.mjs';
 import * as workspace from './workspace.mjs';
 import * as blender from './blender.mjs';
 import * as anim from './anim.mjs';
+import * as painter from './painter.mjs';
 import { account, dropAccountCache } from './account.mjs';
 import { listVersions, liveDir } from './live.mjs';
 import { runFix, undoFix, dropFix, saveFix } from './fix.mjs';
@@ -263,6 +264,19 @@ async function api(req, res, url) {
     return r.ok ? send(res, 200, r) : send(res, 400, errBody(new UserError(r.code)));
   }
   if (parts[1] === 'refs' && m === 'GET') return send(res, 200, refsTree());
+  // Проект 3DPainter: открыть как готовую модель, сохранить со скелетом и движениями.
+  if (parts[1] === 'painter') {
+    try {
+      if (parts[2] === 'name' && m === 'POST') { const b = await readBody(req); return send(res, 200, { name: painter.nameFor(b.file, b.source) }); }
+      if (parts[2] === 'open' && m === 'POST') return send(res, 200, await painter.importPaint(await readBody(req, 600e6)));
+      const name = decodeURIComponent(parts[3] || '');
+      if (parts[2] === 'model' && !parts[4] && m === 'GET') return send(res, 200, painter.info(name));
+      if (parts[2] === 'model' && parts[4] === 'save' && m === 'POST') return send(res, 200, painter.savePaint(name, await readBody(req, 600e6)));
+      if (parts[2] === 'model' && parts[4] === 'saved' && m === 'POST') return send(res, 200, painter.noteSaved(name, (await readBody(req)).path));
+    } catch (e) {
+      return send(res, 400, errBody(e.code ? e : new UserError('paintFail', { msg: e.message })));
+    }
+  }
   // Скачать модель в нужном формате: тот же — файл как есть, другой — перевод
   // Blender'ом без окна (кэш в runs/export/, пока исходник не поменялся).
   // OBJ отдаётся zip'ом вместе с .mtl — иначе теряются цвета.
@@ -291,7 +305,23 @@ async function api(req, res, url) {
     const name = path.basename(src).replace(/\.[^.]+$/, '');
     // Имя для человека — имя модели (задачи), а не «v4».
     const nice = (url.searchParams.get('name') || name).replace(/[^\w.-]+/g, '_').slice(0, 60) || name;
-    if (path.extname(src).slice(1).toLowerCase() === fmt) return sendFile(res, src, true, `${nice}.${fmt}`);
+    // Лицо из 3DPainter: атласы выражений и описание — в один zip с моделью,
+    // иначе игре нечем менять выражения на материале «Face».
+    const faceOf = String(url.searchParams.get('face') || '');
+    const faceDir = /^[\w.-]+$/.test(faceOf) ? path.join(ROOT, 'out', faceOf) : null;
+    const faceFiles = faceDir && fs.existsSync(path.join(faceDir, `${faceOf}_face.json`))
+      ? fs.readdirSync(faceDir).filter((f) => f.startsWith(faceOf + '_face')).map((f) => path.join(faceDir, f)) : [];
+    const deliver = (file, label) => {
+      if (!faceFiles.length) return sendFile(res, file, true, label);
+      const zdir = path.join(ROOT, 'runs', 'export', `face_${Date.now()}`);
+      fs.mkdirSync(zdir, { recursive: true });
+      const zip = path.join(zdir, `${nice}.zip`);
+      const copy = path.join(zdir, label);
+      fs.copyFileSync(file, copy);
+      execFileSync('zip', ['-j', '-q', zip, copy, ...faceFiles]);
+      return sendFile(res, zip, true, `${label.replace(/\.[^.]+$/, '')}_face.zip`);
+    };
+    if (path.extname(src).slice(1).toLowerCase() === fmt) return deliver(src, `${nice}.${fmt}`);
     const st = fs.statSync(src);
     // Скорость кадров — у выгрузки движений: Blender должен считать кадры так же.
     const fps = [12, 24, 25, 30, 60].includes(Number(url.searchParams.get('fps'))) ? Number(url.searchParams.get('fps')) : null;
@@ -300,13 +330,13 @@ async function api(req, res, url) {
     const dst = path.join(dir, `${name}.${fmt}`);
     try {
       if (!fs.existsSync(dst)) await blender.convert(src, dst, { fps });
-      if (fmt !== 'obj') return sendFile(res, dst, true, `${nice}.${fmt}`);
+      if (fmt !== 'obj') return deliver(dst, `${nice}.${fmt}`);
       const zip = path.join(dir, `${name}_obj.zip`);
       if (!fs.existsSync(zip)) {
         const files = fs.readdirSync(dir).filter((f) => /\.(obj|mtl|png|jpe?g)$/i.test(f));
         execFileSync('zip', ['-j', '-q', zip, ...files.map((f) => path.join(dir, f))]);
       }
-      return sendFile(res, zip, true, `${nice}_obj.zip`);
+      return faceFiles.length ? deliver(zip, `${nice}_obj.zip`) : sendFile(res, zip, true, `${nice}_obj.zip`);
     } catch (e) {
       return send(res, 500, errBody(e.code ? e : new UserError('exportFail', { msg: e.message })));
     }

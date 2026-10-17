@@ -91,8 +91,34 @@ reference from four angles, and export to `.blend` + GLB.
   a motion opens a chat in place of the timeline — write "make a looping run"
   or "make the arm swing smoother", pick a Claude model, and the agent sets the
   keys on your skeleton; "Undo" restores the keys from before its change.
+  The agent does not work blind: after each answer a windowless Blender
+  renders a contact sheet of the motion — several frames from the front, side
+  and back on a floor — plus measurements (how far the arms are from the body,
+  how wide the feet go, whether a toe sinks below the floor); the agent looks
+  at it, checks its anatomy list and fixes the motion, up to two rounds.
+  **Mitten fingers**: one button adds two bones per hand — the four fingers
+  together and the thumb — placed by the shape of the hand, so a character can
+  make a fist or hold something; "Human from points" adds them by itself.
+  Binding a model made of many pieces (jacket, shirt, belt, trousers) computes
+  the weights on one solid shell around the whole body and evens them out
+  between touching parts, so clothes no longer tear apart when the body bends.
   The model itself is untouched:
   everything lives in `anim/<model>/` in the workspace.
+- **Works with [3DPainter](https://github.com/unibronga/3Dpainter)** — File ▸
+  Open a model from 3DPainter (or drop a `.3dpaint` on the window): its layers
+  are merged exactly as 3DPainter exports them and the painted model lands in
+  finished models. A painted face becomes its own "Face" material with the
+  neutral expression, and the expression atlases plus their description ride
+  along in every download as one zip. Zones (named sets of faces) come in as
+  their own materials named after the zone, and the mesh keeps its name in
+  every GLB. Animate it, then File ▸ Save the model to
+  3DPainter: the same project file gets the skeleton and motions, while its
+  layers, face and paint variants stay byte for byte, so 3DPainter opens it
+  for more painting. Open the repainted project here again and the paint is
+  updated, the skeleton and motions are kept. The project carries them on its
+  own: opened on another computer or under another file name, the skeleton
+  (bone order and ends included), the binding and every motion with its keys
+  and easing are rebuilt from the file.
 - **Your choice of agents** per task: the modeler (Fable, Opus or Sonnet —
   "always the latest", a specific version, or any model name you type), how
   hard it thinks, and an optional reviewer (any of them, Haiku included) that

@@ -40,9 +40,12 @@ export function library() {
     const genShot = walk(path.join(ROOT, 'out', d.name), 2).filter(isImage).find((f) => /rendered_image|thumbnail|preview/.test(f.path));
     const preview = renders.find((f) => /vs_ref/.test(f.path)) || renders[0] || genShot || allShots[0] || null;
     const blend = path.join('models', d.name + '.blend');
+    // Модель из проекта 3DPainter: рядом лежит его копия — её можно сохранить обратно.
+    const paint = path.join('out', d.name, d.name + '.3dpaint');
     return {
       name: d.name,
       files,
+      paint: fs.existsSync(path.join(ROOT, paint)) ? paint : null,
       preview: preview?.path || null,
       blend: fs.existsSync(path.join(ROOT, blend)) ? blend : null,
       mtime: Math.max(0, ...files.map((f) => f.mtime)),

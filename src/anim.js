@@ -1699,7 +1699,8 @@ export class Animator {
       }
       wrap.append(this.clipsField());
       if (this.clip) wrap.append(this.clipField());
-      wrap.append(...[this.boneList(), this.exportField()].filter(Boolean));
+      // Открыто движение — кости в полосе времени, второй список не нужен.
+      wrap.append(...[!this.clip && this.boneList(), this.exportField()].filter(Boolean));
     }
     return wrap;
   }

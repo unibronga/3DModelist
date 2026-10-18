@@ -86,7 +86,7 @@ export class Timeline {
       const l = el('div', { class: 'tl-lane' + (bone && bone === view.bone ? ' cur' : '') });
       for (const f of frames) {
         const on = sel && sel.f === f && (sel.bone === bone || sel.bone === null);
-        const d = el('span', { class: 'tl-key' + (bone ? '' : ' all') + (on ? ' on' : ''), style: `left:${pct(f)}` });
+        const d = el('span', { class: 'tl-key' + (bone ? '' : ' all') + (on ? ' on' : ''), style: `left:${pct(f)}`, 'data-f': f, 'data-bone': bone || '' });
         d.addEventListener('pointerdown', (e) => this.keyDown(e, bone, f));
         l.append(d);
       }
@@ -173,23 +173,55 @@ export class Timeline {
     addEventListener('pointerup', up);
   }
 
+  // Ромбик: щелчок — выбрать ключ и встать на его кадр; тянуть (больше 3 px)
+  // — перенести. Ключ «Всё тело» везёт за собой ключи всех костей на этом
+  // кадре. Пока тянешь, бегунок и номер кадра показывают, куда встанет;
+  // Esc — отменить. Полоса перерисовывается на выборе, поэтому ромбики
+  // ищем заново по кадру, а не держим старый элемент.
   keyDown(e, bone, f) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     this.cb.onSelect({ bone, f });
     this.cb.onFrame(f);
-    const dot = e.target;
+    const x0 = e.clientX;
+    const n = this.view.clip.frames;
+    const sel = `.tl-key[data-f="${f}"]` + (bone ? `[data-bone="${CSS.escape(bone)}"]` : '');
+    const dots = () => [...this.root.querySelectorAll(sel)];
     let to = f;
-    const move = (ev) => {
-      to = this.frameAt(ev);
-      dot.style.left = `${(to / this.view.clip.frames) * 100}%`;
+    let moving = false;
+    const show = (fr) => {
+      for (const d of dots()) { d.style.left = `${(fr / n) * 100}%`; d.classList.toggle('drag', moving); }
+      this.headLine.style.left = this.bodyLine.style.left = `${(fr / n) * 100}%`;
+      this.frameLabel.textContent = t('tl.frame', { f: fr, n });
     };
-    const up = () => {
+    const move = (ev) => {
+      if (!moving && Math.abs(ev.clientX - x0) < 3) return;
+      moving = true;
+      this.root.classList.add('dragging');
+      to = this.frameAt(ev);
+      show(to);
+    };
+    const stop = () => {
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
-      if (to !== f) this.cb.onMove(bone, f, to);
+      removeEventListener('keydown', esc, true);
+      this.root.classList.remove('dragging');
+    };
+    const up = () => {
+      stop();
+      if (moving && to !== f) this.cb.onMove(bone, f, to);
+      else { moving = false; show(f); }
+    };
+    const esc = (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.stopPropagation();
+      stop();
+      moving = false;
+      show(f);
     };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
+    addEventListener('keydown', esc, true);
   }
 }

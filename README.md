@@ -84,8 +84,8 @@ reference from four angles, and export to `.blend` + GLB.
   windowless Blender compute which bone holds which part (generator meshes cut
   along seams too). Check it with the Bend slider and bone colouring. Motions
   live in packs: click a bone for rotation rings, release to set a key on the
-  frame; a timeline under the model (smooth / even / jump, mirror pose, copy
-  and paste pose, loop). Export a pack or all motions as GLB (Godot, web), FBX
+  frame; a timeline under the model — a row per bone, drag a key to move it
+  (Esc cancels), smooth / even / jump, mirror pose, copy and paste pose, loop. Export a pack or all motions as GLB (Godot, web), FBX
   (Unity, Unreal) or .blend. Bone names follow Unity Humanoid; looping motions
   get a `-loop` suffix so Godot loops them. **Task for the agent**: a button on
   a motion opens a chat in place of the timeline — write "make a looping run"

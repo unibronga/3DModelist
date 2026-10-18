@@ -1145,7 +1145,7 @@ kbd {
 .tl-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .tl-top, .tl-scroll { scrollbar-gutter: stable; overflow-y: auto; }
 .tl-top { overflow-y: hidden; }
-.tl-labels { flex: 0 0 190px; border-right: 1px solid var(--line); }
+.tl-labels { flex: 0 0 190px; width: 190px; min-width: 0; border-right: 1px solid var(--line); }   /* длинное имя кости не раздвигает колонку — ключи строк стоят под ключами шапки */
 .tl-lab {
   height: 26px; line-height: 26px; padding: 0 10px; color: var(--text-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; user-select: none;
@@ -1165,10 +1165,14 @@ kbd {
 .tl-lane.cur { background: color-mix(in srgb, #f08c00 14%, transparent); }
 .tl-key {
   position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; transform: rotate(45deg);
-  background: var(--text-2); border: 1px solid var(--panel); cursor: grab;
+  background: var(--text-2); border: 1px solid var(--panel); cursor: grab; z-index: 1;
 }
+.tl-key::before { content: ""; position: absolute; inset: -5px; }   /* за ромбик легко взяться: ~20 px вокруг */
+.tl-key:hover { background: var(--text); transform: rotate(45deg) scale(1.25); }
 .tl-key.all { background: var(--text); }
 .tl-key.on { background: #f08c00; }
+.tl-key.drag { background: #f08c00; transform: rotate(45deg) scale(1.3); box-shadow: 0 0 0 2px color-mix(in srgb, #f08c00 35%, transparent); z-index: 2; }
+.timeline.dragging, .timeline.dragging * { cursor: grabbing !important; }
 .tl-playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
 .anim-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .anim-legend .lg { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
